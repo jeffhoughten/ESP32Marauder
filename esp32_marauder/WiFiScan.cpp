@@ -32,12 +32,14 @@ LinkedList<Flipper>* flippers;
 LinkedList<IPAddress>* ipList;
 LinkedList<ProbeReqSsid>* probe_req_ssids;
 
-extern "C" int ieee80211_raw_frame_sanity_check(int32_t arg, int32_t arg2, int32_t arg3){
-    if (arg == 31337)
-      return 1;
-    else
-      return 0;
-}
+#ifndef HAS_IDF_3
+  extern "C" int ieee80211_raw_frame_sanity_check(int32_t arg, int32_t arg2, int32_t arg3){
+      if (arg == 31337)
+        return 1;
+      else
+        return 0;
+  }
+#endif
 
 extern "C" {
   uint8_t esp_base_mac_addr[6];
@@ -465,9 +467,7 @@ extern "C" {
           else if (wifi_scan_obj.currentScanMode == BT_SCAN_ALL) {
             if (buf >= 0)
             {
-              #ifndef HAS_MINI_SCREEN
-                display_string.concat(text_table4[0]);
-              #endif
+              display_string.concat(text_table4[0]);
               display_string.concat(advertisedDevice->getRSSI());
               Serial.print(advertisedDevice->getRSSI());
       
@@ -1005,10 +1005,8 @@ extern "C" {
               if (m_data.length() >= 2) {
                 uint16_t companyId = ((uint8_t)m_data[1] << 8) | (uint8_t)m_data[0];
 
-                if (wifi_scan_obj.isBlockedIdentifier(companyId)) {
-                  wifi_scan_obj.bt_cb_busy = false;
+                if (wifi_scan_obj.isBlockedIdentifier(companyId))
                   return;
-                }
 
                 if (wifi_scan_obj.isMetaIdentifier(companyId))
                   match = true;
@@ -1025,10 +1023,8 @@ extern "C" {
                 uint16_t identifier = extract16BitFromUUID(uuidStr);
 
                 if (identifier != 0) {
-                  if (wifi_scan_obj.isBlockedIdentifier(identifier)) {
-                    wifi_scan_obj.bt_cb_busy = false;
+                  if (wifi_scan_obj.isBlockedIdentifier(identifier))
                     return;
-                  }
 
                   if (wifi_scan_obj.isMetaIdentifier(identifier))
                     match = true;
@@ -1044,10 +1040,8 @@ extern "C" {
               
               uint16_t identifier = extract16BitFromUUID(uuidStr);
               if(identifier != 0) {
-                if (wifi_scan_obj.isBlockedIdentifier(identifier)) {
-                  wifi_scan_obj.bt_cb_busy = false;
+                if (wifi_scan_obj.isBlockedIdentifier(identifier))
                   return;
-                }
 
                 if (wifi_scan_obj.isMetaIdentifier(identifier))
                   match = true;
@@ -1262,9 +1256,7 @@ extern "C" {
           else if (wifi_scan_obj.currentScanMode == BT_SCAN_ALL) {
             if (buf >= 0)
             {
-              #ifndef HAS_MINI_SCREEN
-                display_string.concat(text_table4[0]);
-              #endif
+              display_string.concat(text_table4[0]);
               display_string.concat(advertisedDevice->getRSSI());
               Serial.print(advertisedDevice->getRSSI());
       
@@ -1784,10 +1776,8 @@ extern "C" {
               if (m_data.length() >= 2) {
                 uint16_t companyId = ((uint8_t)m_data[1] << 8) | (uint8_t)m_data[0];
 
-                if (wifi_scan_obj.isBlockedIdentifier(companyId)) {
-                  wifi_scan_obj.bt_cb_busy = false;
+                if (wifi_scan_obj.isBlockedIdentifier(companyId))
                   return;
-                }
 
                 if (wifi_scan_obj.isMetaIdentifier(companyId))
                   match = true;
@@ -1804,10 +1794,8 @@ extern "C" {
                 uint16_t identifier = extract16BitFromUUID(uuidStr);
 
                 if (identifier != 0) {
-                  if (wifi_scan_obj.isBlockedIdentifier(identifier)) {
-                    wifi_scan_obj.bt_cb_busy = false;
+                  if (wifi_scan_obj.isBlockedIdentifier(identifier))
                     return;
-                  }
 
                   if (wifi_scan_obj.isMetaIdentifier(identifier))
                     match = true;
@@ -1823,10 +1811,8 @@ extern "C" {
               
               uint16_t identifier = extract16BitFromUUID(uuidStr);
               if(identifier != 0) {
-                if (wifi_scan_obj.isBlockedIdentifier(identifier)) {
-                  wifi_scan_obj.bt_cb_busy = false;
+                if (wifi_scan_obj.isBlockedIdentifier(identifier))
                   return;
-                }
 
                 if (wifi_scan_obj.isMetaIdentifier(identifier))
                   match = true;
@@ -1880,10 +1866,12 @@ extern "C" {
 #endif
 
 void WiFiScan::RunSetup() {
-  if (ieee80211_raw_frame_sanity_check(31337, 0, 0) == 1)
-    this->wsl_bypass_enabled = true;
-  else
-    this->wsl_bypass_enabled = false;
+  #ifndef HAS_IDF_3
+    if (ieee80211_raw_frame_sanity_check(31337, 0, 0) == 1)
+      this->wsl_bypass_enabled = true;
+    else
+      this->wsl_bypass_enabled = false;
+  #endif
 
   #ifdef HAS_PSRAM
     ssids = new (ps_malloc(sizeof(LinkedList<ssid>))) LinkedList<ssid>();
@@ -1916,22 +1904,28 @@ void WiFiScan::RunSetup() {
     mac_entry_state[i] = 0;
 
   #ifdef HAS_BT
-    watch_models = new WatchModel[20] {
+    watch_models = new WatchModel[26] {
       {0x1A, "Fallback Watch"},
+      {0x01, "White Watch4 Classic 44m"},
       {0x02, "Black Watch4 Classic 40m"},
       {0x03, "White Watch4 Classic 40m"},
+      {0x04, "Black Watch4 44mm"},
+      {0x05, "Silver Watch4 44mm"},
       {0x06, "Green Watch4 44mm"},
       {0x07, "Black Watch4 40mm"},
       {0x08, "White Watch4 40mm"},
       {0x09, "Gold Watch4 40mm"},
+      {0x0A, "French Watch4"},
       {0x0B, "French Watch4 Classic"},
       {0x0C, "Fox Watch5 44mm"},
       {0x11, "Black Watch5 44mm"},
       {0x12, "Sapphire Watch5 44mm"},
+      {0x13, "Purpleish Watch5 40mm"},
       {0x14, "Gold Watch5 40mm"},
       {0x15, "Black Watch5 Pro 45mm"},
       {0x16, "Gray Watch5 Pro 45mm"},
       {0x17, "White Watch5 44mm"},
+      {0x18, "White & Black Watch5"},
       {0x1B, "Black Watch6 Pink 40mm"},
       {0x1C, "Gold Watch6 Gold 40mm"},
       {0x1D, "Silver Watch6 Cyan 44mm"},
@@ -2298,8 +2292,8 @@ void WiFiScan::StartScan(uint8_t scan_mode, uint16_t color) {
     RunRawScan(scan_mode, color);    
   else if (scan_mode == WIFI_SCAN_RAW_CAPTURE)
     RunRawScan(scan_mode, color);
-  //else if (scan_mode == WIFI_SCAN_STATION)
-  //  RunStationScan(scan_mode, color);
+  else if (scan_mode == WIFI_SCAN_STATION)
+    RunStationScan(scan_mode, color);
   else if (scan_mode == WIFI_SCAN_TARGET_AP)
     RunAPScan(scan_mode, color);
   else if (scan_mode == WIFI_SCAN_TARGET_AP_FULL)
@@ -2478,7 +2472,7 @@ void WiFiScan::startWiFiAttacks(uint8_t scan_mode, uint16_t color, String title_
       display_obj.tft.fillRect(0,16,TFT_WIDTH,16, color);
       display_obj.tft.drawCentreString((String)title_string,TFT_WIDTH / 2,16,2);
     #endif
-    #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       display_obj.touchToExit();
     #endif
     display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -3294,7 +3288,7 @@ void WiFiScan::setWiFiMode(wifi_mode_t mode, wifi_promiscuous_cb_t cb) {
 
 void WiFiScan::prepareScanStage(uint16_t color_1, uint16_t color_2) {
   #ifdef HAS_SCREEN
-    #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       display_obj.touchToExit();
     #endif
     display_obj.tft.setTextColor(color_1, color_2);
@@ -4408,7 +4402,7 @@ void WiFiScan::RunPacketMonitor(uint8_t scan_mode, uint16_t color) {
   if (scan_mode == WIFI_PACKET_MONITOR)
     startPcap(F("packet_monitor"));
 
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     if ((scan_mode != WIFI_SCAN_PACKET_RATE) &&
         (scan_mode != WIFI_SCAN_CHAN_ANALYZER) &&
         (scan_mode != WIFI_SCAN_CHAN_ACT)) {
@@ -4982,9 +4976,6 @@ void WiFiScan::executeWarDrive() {
         // Start a BLE scan
         if (currentScanMode == WIFI_SCAN_WAR_DRIVE) {
           #ifdef HAS_BT
-            this->bt_pending_clear = true;
-            while (bt_cb_busy)
-              delay(100);
             pBLEScan->clearResults();
             #ifdef HAS_NIMBLE_2
               pBLEScan->start(500, false, false); // Scan is in MS
@@ -4992,7 +4983,6 @@ void WiFiScan::executeWarDrive() {
               pBLEScan->start(1, scanCompleteCB, false); // Scan is in Seconds
             #endif
             this->ble_scanning = true;
-            this->bt_pending_clear = false;
           #endif
         }
       }
@@ -5089,7 +5079,7 @@ void WiFiScan::RunBeaconScan(uint8_t scan_mode, uint16_t color) {
         this->clearMacHistory();
         display_obj.tft.drawCentreString("Wardrive", TFT_WIDTH / 2, 16, 2);
       }
-      #ifdef HAS_ILI9341
+      #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
         if (scan_mode != WIFI_SCAN_AP)
           display_obj.touchToExit();
       #endif
@@ -5099,11 +5089,9 @@ void WiFiScan::RunBeaconScan(uint8_t scan_mode, uint16_t color) {
       //display_obj.setupScrollArea(display_obj.TOP_FIXED_AREA_2, BOT_FIXED_AREA);
     //else {
       //display_obj.setupScrollArea((STATUS_BAR_WIDTH * 2) + EXT_BUTTON_WIDTH, BOT_FIXED_AREA);
-    if (scan_mode != WIFI_SCAN_WAR_DRIVE) {
       display_obj.tftDrawChannelScaleButtons(set_channel, false);
       display_obj.tftDrawExitScaleButtons(false);
       display_obj.tftDrawChanHopButton(false, settings_obj.loadSetting<bool>("ChanHop"));
-    }
     //}
   #endif
 
@@ -5137,10 +5125,19 @@ void WiFiScan::startWardriverWiFi() {
   WiFi.disconnect();
 }
 
-/*void WiFiScan::RunStationScan(uint8_t scan_mode, uint16_t color) {
+void WiFiScan::RunStationScan(uint8_t scan_mode, uint16_t color) {
   startPcap(F("station"));
 
   this->setLEDMode(MODE_SNIFF);
+  /*#ifdef HAS_FLIPPER_LED
+    flipper_led.sniffLED();
+  #elif defined(XIAO_ESP32_S3)
+    xiao_led.sniffLED();
+  #elif defined(MARAUDER_M5STICKC)
+    stickc_led.sniffLED();
+  #else
+    led_obj.setMode(MODE_SNIFF);
+  #endif*/
   
   #ifdef HAS_SCREEN
     this->setupScanDisplayArea(TFT_BLACK, color);
@@ -5173,10 +5170,18 @@ void WiFiScan::startWardriverWiFi() {
     esp_event_loop_create_default();
   #endif
   this->setWiFiMode(WIFI_MODE_NULL, stationSnifferCallback);
+  /*esp_wifi_set_storage(WIFI_STORAGE_RAM);
+  esp_wifi_set_mode(WIFI_MODE_NULL);
+  esp_wifi_start();
+  this->setMac();
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_promiscuous_filter(&filt);
+  esp_wifi_set_promiscuous_rx_cb(&stationSnifferCallback);*/
   this->changeChannel(this->set_channel);
+  //esp_wifi_set_channel(set_channel, WIFI_SECOND_CHAN_NONE);
   this->wifi_initialized = true;
   initTime = millis();
-}*/
+}
 
 void WiFiScan::RunRawScan(uint8_t scan_mode, uint16_t color) {
   if (scan_mode != WIFI_SCAN_SIG_STREN)
@@ -5210,7 +5215,7 @@ void WiFiScan::RunRawScan(uint8_t scan_mode, uint16_t color) {
     //display_obj.setupScrollArea(display_obj.TOP_FIXED_AREA_2, BOT_FIXED_AREA);
     //display_obj.setupScrollArea((STATUS_BAR_WIDTH * 2) + CHAR_WIDTH - 1, BOT_FIXED_AREA);
 
-    #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       if ((scan_mode == WIFI_SCAN_RAW_CAPTURE) ||
           (scan_mode == WIFI_SCAN_SIG_STREN)) {
         display_obj.tft.setFreeFont(NULL);
@@ -5402,7 +5407,7 @@ void WiFiScan::RunProbeScan(uint8_t scan_mode, uint16_t color) {
         display_obj.tft.drawCentreString("Flock Sniff",TFT_WIDTH / 2,16,2);
       }
     #endif
-    #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       if (scan_mode != WIFI_SCAN_PROBE)
         display_obj.touchToExit();
     #endif
@@ -5410,13 +5415,9 @@ void WiFiScan::RunProbeScan(uint8_t scan_mode, uint16_t color) {
     //if (scan_mode != WIFI_SCAN_PROBE)
     //  display_obj.setupScrollArea(display_obj.TOP_FIXED_AREA_2, BOT_FIXED_AREA);
     //else {
-    if ((scan_mode != WIFI_SCAN_DETECT_FOLLOW) &&
-        (scan_mode != WIFI_SCAN_STATION_WAR_DRIVE) &&
-        (scan_mode != BT_SCAN_FLOCK)) {
       display_obj.tftDrawChannelScaleButtons(set_channel, false);
       display_obj.tftDrawExitScaleButtons(false);
       display_obj.tftDrawChanHopButton(false, settings_obj.loadSetting<bool>("ChanHop"));
-    }
     //}
   #endif
   
@@ -5452,7 +5453,7 @@ void WiFiScan::RunSourApple(uint8_t scan_mode, uint16_t color) {
         display_obj.tft.fillRect(0,16,TFT_WIDTH,16, color);
         display_obj.tft.drawCentreString("Sour Apple",TFT_WIDTH / 2,16,2);
       #endif
-      #ifdef HAS_ILI9341
+      #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
         display_obj.touchToExit();
       #endif
       display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -5490,7 +5491,7 @@ void WiFiScan::RunSwiftpairSpam(uint8_t scan_mode, uint16_t color) {
           display_obj.tft.drawCentreString("BLE Spam Flipper", TFT_WIDTH / 2, 16, 2);
         else if (scan_mode == BT_SPOOF_AIRTAG)
           display_obj.tft.drawCentreString("BLE Spoof Airtag", TFT_WIDTH / 2, 16, 2);
-        #ifdef HAS_ILI9341
+        #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
           display_obj.touchToExit();
         #endif
       #endif
@@ -5526,8 +5527,7 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
         (scan_mode == BT_SCAN_SIMPLE) ||
         (scan_mode == BT_SCAN_SIMPLE_TWO) ||
         (scan_mode == BT_SCAN_WAR_DRIVE_CONT) || 
-        (scan_mode == BT_SCAN_ANALYZER) ||
-        (scan_mode == BT_SCAN_RAYBAN))
+        (scan_mode == BT_SCAN_ANALYZER))
       NimBLEDevice::setScanDuplicateCacheSize(0);
     else {
       NimBLEDevice::setScanFilterMode(CONFIG_BTDM_SCAN_DUPL_TYPE_DEVICE);
@@ -5598,7 +5598,7 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
             display_obj.tft.drawCentreString("BT Wardrive Continuous",TFT_WIDTH / 2,16,2);
           else if (scan_mode == BT_SCAN_RAYBAN)
             display_obj.tft.drawCentreString("Meta Detect",TFT_WIDTH / 2, 16, 2);
-          #ifdef HAS_ILI9341
+          #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
             display_obj.touchToExit();
           #endif
         #endif
@@ -5668,7 +5668,7 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
             display_obj.tft.drawCentreString("BT Wardrive",TFT_WIDTH / 2,16,2);
           else if (scan_mode == BT_SCAN_WAR_DRIVE_CONT)
             display_obj.tft.drawCentreString("BT Wardrive Continuous",TFT_WIDTH / 2,16,2);
-          #ifdef HAS_ILI9341
+          #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
             display_obj.touchToExit();
           #endif
         #endif
@@ -5715,7 +5715,7 @@ void WiFiScan::RunBluetoothScan(uint8_t scan_mode, uint16_t color) {
         #ifdef HAS_FULL_SCREEN
           display_obj.tft.fillRect(0,16,TFT_WIDTH,16, color);
           display_obj.tft.drawCentreString("Bluetooth Analyzer", TFT_WIDTH / 2, 16, 2);
-          #ifdef HAS_ILI9341
+          #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
             display_obj.touchToExit();
           #endif
         #endif
@@ -7782,7 +7782,7 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
 
           buffer_obj.append(snifferPacket, len);
         }
-        /*else if (wifi_scan_obj.currentScanMode == WIFI_SCAN_STATION_WAR_DRIVE) {
+        else if (wifi_scan_obj.currentScanMode == WIFI_SCAN_STATION_WAR_DRIVE) {
           #ifdef HAS_GPS
             if (gps_obj.getGpsModuleStatus()) {
               bool do_save = false;  
@@ -7797,6 +7797,7 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
               Serial.print(F(" Ch: "));
               Serial.print((String)snifferPacket->rx_ctrl.channel + " ");
 
+              //Serial.print(F(" BSSID: "));
               Serial.print(addr);
               display_string.concat(addr);
 
@@ -7824,6 +7825,7 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
 
               Serial.println();
 
+              //wifi_scan_obj.save_mac(reinterpret_cast<unsigned char*>(addr));
 
               if (do_save) {
                 String wardrive_line = (String)addr + "," + (String)addr + ",," + gps_obj.getDatetime() + "," + (String)snifferPacket->rx_ctrl.channel + "," + (String)snifferPacket->rx_ctrl.rssi + "," + gps_obj.getLat() + "," + gps_obj.getLon() + "," + gps_obj.getAlt() + "," + gps_obj.getAccuracy() + ",WIFI";
@@ -7832,7 +7834,7 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
               }
             }
           #endif
-        }*/
+        }
       }
     }
   }
@@ -8150,7 +8152,7 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
   }
 }
 
-/*void WiFiScan::stationSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
+void WiFiScan::stationSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
   extern WiFiScan wifi_scan_obj;
   wifi_promiscuous_pkt_t *snifferPacket = (wifi_promiscuous_pkt_t*)buf;
   WifiMgmtHdr *frameControl = (WifiMgmtHdr*)snifferPacket->payload;
@@ -8164,6 +8166,12 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
 
   if (type != WIFI_PKT_DATA)
     return;
+  /*{
+    len -= 4;
+    int fctl = ntohs(frameControl->fctl);
+    const wifi_ieee80211_packet_t *ipkt = (wifi_ieee80211_packet_t *)snifferPacket->payload;
+    const WifiMgmtHdr *hdr = &ipkt->hdr;
+  }*/
 
   char ap_addr[] = "00:00:00:00:00:00";
   char dst_addr[] = "00:00:00:00:00:00";
@@ -8210,6 +8218,10 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
     else
       frame_offset = 10;
   }
+  /*  Stuff to care about now
+   *  ap_is_src
+   *  ap_index
+   */
   
 
   // Check if we already have this station
@@ -8218,8 +8230,10 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
     mac_match = true;
     
     for (int x = 0; x < 6; x++) {
+      //Serial.println((String)snifferPacket->payload[x + 10] + " | " + (String)access_points->get(i).bssid[x]);
       if (snifferPacket->payload[x + frame_offset] != stations->get(i).mac[x]) {
         mac_match = false;
+        //Serial.println("MACs do not match");
         break;
       }
     }
@@ -8274,6 +8288,7 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
   //display_string.concat(replaceOUIWithManufacturer(sta_addr));
   display_string.concat(sta_addr);
 
+  //display_string.concat(sta_addr);
   display_string.concat(" -> ");
   display_string.concat(access_points->get(ap_index).essid);
 
@@ -8290,6 +8305,8 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
     display_obj.display_buffer->add(display_string);
   #endif
 
+  // Add station index to AP in list
+  //access_points->get(ap_index).stations->add(stations->size() - 1);
 
   if (mem_check) {
     AccessPoint ap = access_points->get(ap_index);
@@ -8299,7 +8316,7 @@ void WiFiScan::beaconSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type
   }
 
   buffer_obj.append(snifferPacket, len);
-}*/
+}
 
 /*void WiFiScan::rawSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type)
 {
@@ -9577,7 +9594,7 @@ void WiFiScan::wifiSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
 
       // If we dont the buffer size is not 0, don't write or else we get CORRUPT_HEAP
       #ifdef HAS_SCREEN
-        #ifdef HAS_ILI9341
+        #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
           if (snifferPacket->payload[0] == 0x80)
           {
             num_beacon++;
@@ -10110,7 +10127,7 @@ bool WiFiScan::filterActive() {
     uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
 
     // Do the touch stuff
-    #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       pressed = display_obj.updateTouch(&t_x, &t_y);
     #endif
 
@@ -10437,8 +10454,7 @@ void WiFiScan::channelHop(bool filtered, bool ranged) {
        (this->currentScanMode == WIFI_SCAN_PROBE) ||
        (this->currentScanMode == WIFI_SCAN_DEAUTH) ||
        (this->currentScanMode == WIFI_SCAN_EAPOL) ||
-       (this->currentScanMode == WIFI_SCAN_RAW_CAPTURE) ||
-       (this->currentScanMode == WIFI_SCAN_PACKET_RATE)))
+       (this->currentScanMode == WIFI_SCAN_RAW_CAPTURE)))
     return;
 
   if (!filtered) {
@@ -10550,7 +10566,7 @@ void WiFiScan::signalAnalyzerLoop(uint32_t tick) {
       }
     }
     
-    #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       int8_t b = this->checkAnalyzerButtons(millis());
 
       if (b == EXIT_BUTTON_INDEX) {
@@ -10663,7 +10679,7 @@ void WiFiScan::channelActivityLoop(uint32_t tick) {
       }
     }
 
-    #ifdef HAS_ILI9341
+      #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       int8_t b = this->checkAnalyzerButtons(millis());
 
       if (b == EXIT_BUTTON_INDEX) {
@@ -10727,7 +10743,7 @@ void WiFiScan::channelActivityLoop(uint32_t tick) {
       }
     }
 
-    #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       int8_t b = this->checkAnalyzerButtons(millis());
 
       if (b == EXIT_BUTTON_INDEX) {
@@ -10899,7 +10915,7 @@ void WiFiScan::packetRateLoop(uint32_t tick) {
 
   }
 
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     int8_t b = this->checkAnalyzerButtons(millis());
 
     if (b == EXIT_BUTTON_INDEX) {
@@ -11343,7 +11359,7 @@ void WiFiScan::main(uint32_t currentTime)
     if ((currentScanMode == WIFI_SCAN_AP) || 
         (currentScanMode == WIFI_SCAN_PROBE) ||
         (currentScanMode == WIFI_SCAN_DEAUTH)){
-      #ifdef HAS_ILI9341
+      #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
         this->signalAnalyzerLoop(currentTime);
       #endif
     }
@@ -11383,9 +11399,8 @@ void WiFiScan::main(uint32_t currentTime)
           (currentScanMode == BT_SCAN_FLOCK_WARDRIVE) ||
           (currentScanMode == BT_SCAN_WAR_DRIVE) ||
           (currentScanMode == BT_SCAN_WAR_DRIVE_CONT) ||
-          (currentScanMode == BT_SCAN_FLIPPER) ||
-          (currentScanMode == BT_SCAN_AIRTAG) ||
-          (currentScanMode == BT_SCAN_RAYBAN)) {
+          (currentScanMode == BT_SCAN_FLIPPER) || 
+          (currentScanMode == BT_SCAN_AIRTAG)) {
     if (currentTime - initTime >= this->channel_hop_delay * HOP_DELAY) {
       initTime = millis();
       #ifdef HAS_BT
@@ -11496,7 +11511,7 @@ void WiFiScan::main(uint32_t currentTime)
     }
   }
   else if (currentScanMode == WIFI_SCAN_SIG_STREN) {
-    #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
       this->signalAnalyzerLoop(currentTime);
     #endif
     if (currentTime - initTime >= this->channel_hop_delay * 500) {
@@ -11653,7 +11668,7 @@ void WiFiScan::main(uint32_t currentTime)
   else if (currentScanMode == WIFI_PACKET_MONITOR)
   {
     #ifdef HAS_SCREEN
-      #ifdef HAS_ILI9341
+      #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
         packetMonitorMain(currentTime);
       #endif
     #endif

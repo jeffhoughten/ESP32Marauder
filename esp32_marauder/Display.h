@@ -14,7 +14,11 @@
 #include "SPIFFS.h"
 #include "Assets.h"
 
-#include <TFT_eSPI.h>
+#ifdef MARAUDER_SENSECAP
+  #include <TFT_eSPI_shim.h>
+#else
+  #include <TFT_eSPI.h>
+#endif
 
 #ifdef HAS_CYD_TOUCH
   #include <XPT2046_Touchscreen.h>

@@ -64,7 +64,7 @@ void MenuFunctions::buttonSelected(int b, int x) {
 }
 
 void MenuFunctions::displayMenuButtons() {
-  #ifdef HAS_ILI9341
+    #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     // Draw lines to show each menu button
     for (int i = 0; i < 3; i++) {
 
@@ -180,14 +180,14 @@ void MenuFunctions::main(uint32_t currentTime)
 
   int pre_getTouch = millis();
 
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     if (!this->disable_touch)
       pressed = display_obj.updateTouch(&t_x, &t_y);
   #endif
 
 
   // Brightness gesture: hold top or bottom zone 1.5s to enter brightness mode
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     if (pressed && (wifi_scan_obj.currentScanMode == WIFI_SCAN_OFF ||
                     wifi_scan_obj.currentScanMode == WIFI_CONNECTED)) {
       uint16_t zoneUp = TFT_HEIGHT * 25 / 100;
@@ -214,7 +214,7 @@ void MenuFunctions::main(uint32_t currentTime)
   #endif
 
   // This is if there are scans/attacks going on
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     if ((wifi_scan_obj.currentScanMode != WIFI_SCAN_OFF) &&
         (pressed) &&
         (wifi_scan_obj.currentScanMode != WIFI_CONNECTED) &&
@@ -424,7 +424,7 @@ void MenuFunctions::main(uint32_t currentTime)
   // This is for when on a menu
   // Make sure to add certain scanning functions here or else
   // menu items will be selected while scans and attacks are running
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     if ((wifi_scan_obj.currentScanMode != WIFI_ATTACK_BEACON_SPAM) &&
         (wifi_scan_obj.currentScanMode != WIFI_ATTACK_AP_SPAM) &&
         (wifi_scan_obj.currentScanMode != WIFI_ATTACK_CSA) &&
@@ -1062,7 +1062,7 @@ void MenuFunctions::updateStatusBar()
   display_obj.tft.fillRect(186, 0, 16, STATUS_BAR_WIDTH, STATUSBAR_COLOR);
 
   // Disable touch stuff
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     #ifdef HAS_BUTTONS
       if (this->disable_touch) {
         display_obj.tft.setCursor(0, 1);
@@ -1253,7 +1253,7 @@ void MenuFunctions::drawStatusBar()
 
 
   // Disable touch stuff
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     #ifdef HAS_BUTTONS
       if (this->disable_touch) {
         display_obj.tft.setCursor(0, 1);
@@ -1349,14 +1349,15 @@ void MenuFunctions::drawStatusBar()
   }
 }
 
-void MenuFunctions::orientDisplay() {
+void MenuFunctions::orientDisplay()
+{
   display_obj.init();
 
   display_obj.tft.setRotation(SCREEN_ORIENTATION); // Portrait
 
   display_obj.tft.setCursor(0, 0);
 
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     #ifndef HAS_CYD_TOUCH
       display_obj.setCalData();
     #else
@@ -1364,7 +1365,7 @@ void MenuFunctions::orientDisplay() {
     #endif
   #endif
 
-  changeMenu(current_menu, true);
+  changeMenu(current_menu);
 }
 
 void MenuFunctions::runBoolSetting(String key) {
@@ -1469,9 +1470,9 @@ void MenuFunctions::RunSetup()
   wifiSnifferMenu.list = new LinkedList<MenuNode>();
   wifiScannerMenu.list = new LinkedList<MenuNode>();
   wifiAttackMenu.list = new LinkedList<MenuNode>();
-  /*#ifdef HAS_GPS
+  #ifdef HAS_GPS
     wardrivingMenu.list = new LinkedList<MenuNode>();
-  #endif*/
+  #endif
   wifiGeneralMenu.list = new LinkedList<MenuNode>();
   wifiAPMenu.list = new LinkedList<MenuNode>();
   wifiIPMenu.list = new LinkedList<MenuNode>();
@@ -1507,8 +1508,10 @@ void MenuFunctions::RunSetup()
 
   evilPortalMenu.list = new LinkedList<MenuNode>();
   ssidsMenu.list = new LinkedList<MenuNode>();
-
-  gpsPOIMenu.list = new LinkedList<MenuNode>();
+  
+  #ifdef HAS_GPS
+    gpsPOIMenu.list = new LinkedList<MenuNode>();
+  #endif
 
   // Work menu names
   mainMenu.name = text_table1[6];
@@ -1546,7 +1549,7 @@ void MenuFunctions::RunSetup()
   #ifdef HAS_GPS
     gpsMenu.name = "GPS"; 
     gpsInfoMenu.name = "GPS Data";
-    //wardrivingMenu.name = "Wardriving";
+    wardrivingMenu.name = "Wardriving";
   #endif  
   htmlMenu.name = "EP HTML List";
   miniKbMenu.name = "Mini Keyboard";
@@ -1556,9 +1559,9 @@ void MenuFunctions::RunSetup()
   selectProbeSSIDsMenu.name = "Probe Requests";
   evilPortalMenu.name = "Evil Portal";
   ssidsMenu.name = "SSIDs";
-
-  gpsPOIMenu.name = "GPS POI";
-
+  #ifdef HAS_GPS
+    gpsPOIMenu.name = "GPS POI";
+  #endif
   // Build Main Menu
   mainMenu.parentMenu = NULL;
   this->addNodes(&mainMenu, text_table1[7], TFTGREEN, NULL, WIFI, [this]() {
@@ -1592,11 +1595,11 @@ void MenuFunctions::RunSetup()
   this->addNodes(&wifiMenu, "Scanners", TFTORANGE, NULL, SCANNERS, [this]() {
     this->changeMenu(&wifiScannerMenu, true);
   });
-  /*#ifdef HAS_GPS
+  #ifdef HAS_GPS
     this->addNodes(&wifiMenu, "Wardriving", TFTGREEN, NULL, BEACON_SNIFF, [this]() {
       this->changeMenu(&wardrivingMenu, true);
     });
-  #endif*/
+  #endif
   this->addNodes(&wifiMenu, text_table1[32], TFTRED, NULL, ATTACKS, [this]() {
     this->changeMenu(&wifiAttackMenu, true);
   });
@@ -1703,7 +1706,7 @@ void MenuFunctions::RunSetup()
     wifi_scan_obj.StartScan(WIFI_SCAN_PACKET_RATE, TFT_ORANGE);
     wifi_scan_obj.renderPacketRate();
   });
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     this->addNodes(&wifiSnifferMenu, text_table1[46], TFTVIOLET, NULL, EAPOL, [this]() {
       display_obj.clearScreen();
       this->drawStatusBar();
@@ -1770,11 +1773,11 @@ void MenuFunctions::RunSetup()
     this->drawStatusBar();
     wifi_scan_obj.StartScan(WIFI_SCAN_AP_STA, 0x97e0);
   });
-  /*this->addNodes(&wifiSnifferMenu, text_table1[59], TFTORANGE, NULL, PACKET_MONITOR, [this]() {
+  this->addNodes(&wifiSnifferMenu, text_table1[59], TFTORANGE, NULL, PACKET_MONITOR, [this]() {
     display_obj.clearScreen();
     this->drawStatusBar();
     wifi_scan_obj.StartScan(WIFI_SCAN_STATION, TFT_WHITE);
-  });*/
+  });
   this->addNodes(&wifiSnifferMenu, "Signal Monitor", TFTCYAN, NULL, PACKET_MONITOR, [this]() {
     display_obj.clearScreen();
     this->drawStatusBar();
@@ -1793,19 +1796,19 @@ void MenuFunctions::RunSetup()
 
   // Build Wardriving menu
   #ifdef HAS_GPS
-    /*wardrivingMenu.parentMenu = &wifiMenu; // Main Menu is second menu parent
+    wardrivingMenu.parentMenu = &wifiMenu; // Main Menu is second menu parent
     this->addNodes(&wardrivingMenu, text09, TFTLIGHTGREY, NULL, 0, [this]() {
       this->changeMenu(wardrivingMenu.parentMenu, true);
-    });*/
+    });
     if (gps_obj.getGpsModuleStatus()) {
-      this->addNodes(&wifiSnifferMenu, "Wardrive", TFTGREEN, NULL, BEACON_SNIFF, [this]() {
+      this->addNodes(&wardrivingMenu, "Wardrive", TFTGREEN, NULL, BEACON_SNIFF, [this]() {
         display_obj.clearScreen();
         this->drawStatusBar();
         wifi_scan_obj.StartScan(WIFI_SCAN_WAR_DRIVE, TFT_GREEN);
       });
     }
   #endif
-  /*#ifdef HAS_GPS
+  #ifdef HAS_GPS
     if (gps_obj.getGpsModuleStatus()) {
       this->addNodes(&wardrivingMenu, "Station Wardrive", TFTORANGE, NULL, PROBE_SNIFF, [this]() {
         display_obj.clearScreen();
@@ -1813,7 +1816,7 @@ void MenuFunctions::RunSetup()
         wifi_scan_obj.StartScan(WIFI_SCAN_STATION_WAR_DRIVE, TFT_ORANGE);
       });
     }
-  #endif*/
+  #endif
 
   // Build WiFi attack menu
   wifiAttackMenu.parentMenu = &wifiMenu; // Main Menu is second menu parent
@@ -2055,7 +2058,7 @@ void MenuFunctions::RunSetup()
 
   clearSSIDsMenu.parentMenu = &wifiGeneralMenu;
 
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     this->addNodes(&wifiGeneralMenu, text_table1[1], TFTNAVY, NULL, KEYBOARD_ICO, [this](){
       char ssidBuf[64] = {0};
       bool keep_going = true;
@@ -2313,7 +2316,7 @@ void MenuFunctions::RunSetup()
               wifi_scan_obj.joinWiFi(access_points->get(i).essid, String(passwordBuf), true);
             }
 
-            this->changeMenu(&wifiGeneralMenu, true);
+            this->changeMenu(&wifiGeneralMenu, false);
           #endif
         });
       }
@@ -2361,7 +2364,7 @@ void MenuFunctions::RunSetup()
                 wifi_scan_obj.joinWiFi(access_points->get(i).essid, String(passwordBuf), true);
               }
 
-              this->changeMenu(&wifiGeneralMenu, true);
+              this->changeMenu(&wifiGeneralMenu, false);
             #endif
           });
         }
@@ -2704,18 +2707,16 @@ void MenuFunctions::RunSetup()
     this->changeMenu(&saveFileMenu, true);
   });
 
-  #ifndef HAS_MINI_SCREEN
-    this->addNodes(&deviceMenu, "Brightness", TFTYELLOW, NULL, BRIGHTNESS, [this]() {
-      this->brightnessMode();
-    });
-  #endif
+  this->addNodes(&deviceMenu, "Brightness", TFTYELLOW, NULL, KEYBOARD_ICO, [this]() {
+    this->brightnessMode();
+  });
 
   this->addNodes(&deviceMenu, text_table1[17], TFTWHITE, NULL, DEVICE_INFO, [this]() {
     wifi_scan_obj.currentScanMode = SHOW_INFO;
     this->changeMenu(&infoMenu, true);
     wifi_scan_obj.RunInfo();
   });
-  this->addNodes(&deviceMenu, text08, TFTBLUE, NULL, SETTINGS, [this]() {
+  this->addNodes(&deviceMenu, text08, TFTNAVY, NULL, KEYBOARD_ICO, [this]() {
     this->changeMenu(&settingsMenu, true);
   });
 
@@ -2871,7 +2872,7 @@ void MenuFunctions::RunSetup()
   });
   for (int i = 0; i < settings_obj.getNumberSettings(); i++) {
     if (this->callSetting(settings_obj.setting_index_to_name(i)) == "bool")
-      this->addNodes(&settingsMenu, settings_obj.setting_index_to_name(i), TFTLIGHTGREY, NULL, SETTINGS, [this, i]() {
+      this->addNodes(&settingsMenu, settings_obj.setting_index_to_name(i), TFTLIGHTGREY, NULL, 0, [this, i]() {
         settings_obj.toggleSetting(settings_obj.setting_index_to_name(i));
         this->callSetting(settings_obj.setting_index_to_name(i));
         this->changeMenu(&specSettingMenu, true);
@@ -3560,7 +3561,7 @@ void MenuFunctions::renderGraphUI(uint8_t scan_mode) {
 uint16_t MenuFunctions::getColor(uint16_t color) {
   if (color == TFTWHITE) return TFT_WHITE;
   else if (color == TFTCYAN) return TFT_CYAN;
-  else if (color == TFTBLUE) return TFT_BLUE;
+  else if (color == TFTBLUE) return TFT_SKYBLUE;
   else if (color == TFTRED) return TFT_RED;
   else if (color == TFTGREEN) return TFT_GREEN;
   else if (color == TFTGREY) return TFT_LIGHTGREY;
@@ -3571,7 +3572,7 @@ uint16_t MenuFunctions::getColor(uint16_t color) {
   else if (color == TFTYELLOW) return TFT_YELLOW;
   else if (color == TFTLIGHTGREY) return TFT_LIGHTGREY;
   else if (color == TFTPURPLE) return TFT_PURPLE;
-  else if (color == TFTNAVY) return TFT_NAVY;
+  else if (color == TFTNAVY) return TFT_SKYBLUE;
   else if (color == TFTSILVER) return TFT_SILVER;
   else if (color == TFTDARKGREY) return TFT_DARKGREY;
   else if (color == TFTSKYBLUE) return TFT_SKYBLUE;
@@ -3585,17 +3586,6 @@ void MenuFunctions::changeMenu(Menu* menu, bool simple_change) {
     //display_obj.initScrollValues();
     //display_obj.setupScrollArea(TOP_FIXED_AREA, BOT_FIXED_AREA);
     display_obj.init();
-
-    #ifdef HAS_ILI9341
-      extern uint8_t getBrightnessLevel();
-      #if ESP_ARDUINO_VERSION_MAJOR >= 3
-        #define BL_PREVIEW(duty) ledcWrite(TFT_BL, (duty))
-      #else
-        #define BL_PREVIEW(duty) ledcWrite(0, (duty))
-      #endif
-
-      BL_PREVIEW(getBrightnessLevel());
-    #endif
   }
   current_menu = menu;
 
@@ -3630,7 +3620,7 @@ void MenuFunctions::buildButtons(Menu *menu, int starting_index, String button_n
     uint16_t color = this->getColor(menu->list->get(starting_index + i).color);
     
     char buf[menu->list->get(starting_index + i).name.length() + 1] = {};
-    if (button_name != "")
+    if (button_name = "")
       menu->list->get(starting_index + i).name.toCharArray(buf, menu->list->get(starting_index + i).name.length() + 1);
     else
       button_name.toCharArray(buf, button_name.length() + 1);
@@ -3735,90 +3725,86 @@ void MenuFunctions::displayCurrentMenu(int start_index)
 // Hold top/bottom zone 1.5s to enter. TAP TOP = brighter, TAP BOTTOM = dimmer.
 // TAP MIDDLE or wait 3s = save & exit.
 // ============================================================
-#ifndef HAS_MINI_SCREEN
-  void MenuFunctions::brightnessMode() {
-    extern void brightnessSave(uint8_t level);
-    extern uint8_t getBrightnessLevel();
+void MenuFunctions::brightnessMode() {
+  extern void brightnessSave(uint8_t level);
+  extern uint8_t getBrightnessLevel();
 
-    const uint8_t levels[] = {26, 51, 77, 102, 128, 153, 179, 204, 230, 255};
-    const uint8_t numLevels = 10;
-    uint8_t level = getBrightnessLevel();
+  const uint8_t levels[] = {26, 51, 77, 102, 128, 153, 179, 204, 230, 255};
+  const uint8_t numLevels = 10;
+  uint8_t level = getBrightnessLevel();
 
-    // LEDC write compatibility (2.x vs 3.x board package)
-    #if ESP_ARDUINO_VERSION_MAJOR >= 3
-      #define BL_PREVIEW(duty) ledcWrite(TFT_BL, (duty))
-    #else
-      #define BL_PREVIEW(duty) ledcWrite(0, (duty))
-    #endif
+  // LEDC write compatibility (2.x vs 3.x board package)
+  #if ESP_ARDUINO_VERSION_MAJOR >= 3
+    #define BL_PREVIEW(duty) ledcWrite(TFT_BL, (duty))
+  #else
+    #define BL_PREVIEW(duty) ledcWrite(0, (duty))
+  #endif
 
-    display_obj.tft.fillScreen(TFT_BLACK);
-    display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
-    display_obj.tft.drawCentreString("BRIGHTNESS", TFT_WIDTH/2, 30, 2);
+  display_obj.tft.fillScreen(TFT_BLACK);
+  display_obj.tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  display_obj.tft.drawCentreString("BRIGHTNESS", TFT_WIDTH/2, 30, 2);
 
-    display_obj.tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    display_obj.tft.drawCentreString("TAP TOP = BRIGHTER", TFT_WIDTH/2, 10, 1);
-    display_obj.tft.drawCentreString("TAP BOTTOM = DIMMER", TFT_WIDTH/2, TFT_HEIGHT - 20, 1);
-    display_obj.tft.setTextColor(TFT_RED, TFT_BLACK);
-    display_obj.tft.drawCentreString("TAP MIDDLE or WAIT 3s = SAVE", TFT_WIDTH/2, TFT_HEIGHT/2 + 50, 1);
+  display_obj.tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  display_obj.tft.drawCentreString("TAP TOP = BRIGHTER", TFT_WIDTH/2, 10, 1);
+  display_obj.tft.drawCentreString("TAP BOTTOM = DIMMER", TFT_WIDTH/2, TFT_HEIGHT - 20, 1);
+  display_obj.tft.setTextColor(TFT_RED, TFT_BLACK);
+  display_obj.tft.drawCentreString("TAP MIDDLE or WAIT 3s = SAVE", TFT_WIDTH/2, TFT_HEIGHT/2 + 50, 1);
 
-    auto drawBar = [&]() {
-      uint16_t barX = 30, barY = TFT_HEIGHT/2 - 25, barW = TFT_WIDTH - 60, barH = 30;
-      display_obj.tft.drawRect(barX, barY, barW, barH, TFT_WHITE);
-      uint16_t fillW = (barW - 4) * (level + 1) / numLevels;
-      display_obj.tft.fillRect(barX + 2, barY + 2, barW - 4, barH - 4, TFT_BLACK);
-      display_obj.tft.fillRect(barX + 2, barY + 2, fillW, barH - 4, TFT_CYAN);
-      display_obj.tft.fillRect(0, barY + barH + 5, TFT_WIDTH, 20, TFT_BLACK);
-      display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
-      String pct = String(levels[level] * 100 / 255) + "%";
-      display_obj.tft.drawCentreString(pct, TFT_WIDTH/2, barY + barH + 8, 2);
-    };
-    drawBar();
+  auto drawBar = [&]() {
+    uint16_t barX = 30, barY = TFT_HEIGHT/2 - 25, barW = TFT_WIDTH - 60, barH = 30;
+    display_obj.tft.drawRect(barX, barY, barW, barH, TFT_WHITE);
+    uint16_t fillW = (barW - 4) * (level + 1) / numLevels;
+    display_obj.tft.fillRect(barX + 2, barY + 2, barW - 4, barH - 4, TFT_BLACK);
+    display_obj.tft.fillRect(barX + 2, barY + 2, fillW, barH - 4, TFT_CYAN);
+    display_obj.tft.fillRect(0, barY + barH + 5, TFT_WIDTH, 20, TFT_BLACK);
+    display_obj.tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    String pct = String(levels[level] * 100 / 255) + "%";
+    display_obj.tft.drawCentreString(pct, TFT_WIDTH/2, barY + barH + 8, 2);
+  };
+  drawBar();
 
-    uint16_t zoneUp = TFT_HEIGHT * 25 / 100;
-    uint16_t zoneDown = TFT_HEIGHT * 75 / 100;
-    uint32_t lastTouch = millis();
+  uint16_t zoneUp = TFT_HEIGHT * 25 / 100;
+  uint16_t zoneDown = TFT_HEIGHT * 75 / 100;
+  uint32_t lastTouch = millis();
 
-    while (true) {
-      // Auto-save after 3s of no touch
-      if (millis() - lastTouch >= 3000) {
+  while (true) {
+    // Auto-save after 3s of no touch
+    if (millis() - lastTouch >= 3000) {
+      brightnessSave(level);
+      break;
+    }
+
+    uint16_t tx, ty;
+    if (display_obj.updateTouch(&tx, &ty)) {
+      lastTouch = millis();
+      // Wait for release
+      while (display_obj.updateTouch(&tx, &ty)) delay(10);
+
+      if (ty < zoneUp) {
+        if (level < numLevels - 1) {
+          level++;
+          BL_PREVIEW(levels[level]);
+          drawBar();
+        }
+      } else if (ty >= zoneDown) {
+        if (level > 0) {
+          level--;
+          BL_PREVIEW(levels[level]);
+          drawBar();
+        }
+      } else {
+        // Middle = save now
         brightnessSave(level);
         break;
       }
-
-      uint16_t tx, ty;
-      if (display_obj.updateTouch(&tx, &ty)) {
-        lastTouch = millis();
-        // Wait for release
-        while (display_obj.updateTouch(&tx, &ty)) delay(10);
-
-        if (ty < zoneUp) {
-          if (level < numLevels - 1) {
-            level++;
-            BL_PREVIEW(levels[level]);
-            drawBar();
-          }
-        } else if (ty >= zoneDown) {
-          if (level > 0) {
-            level--;
-            BL_PREVIEW(levels[level]);
-            drawBar();
-          }
-        } else {
-          // Middle = save now
-          brightnessSave(level);
-          break;
-        }
-        delay(150);
-      }
-      delay(30);
+      delay(150);
     }
-
-    #undef BL_PREVIEW
-    this->changeMenu(current_menu, true);
+    delay(30);
   }
-#endif
+
+  #undef BL_PREVIEW
+  this->changeMenu(current_menu, true);
+}
 
 #endif
-
-
 

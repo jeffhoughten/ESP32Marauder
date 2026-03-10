@@ -3,6 +3,29 @@
 
 #ifdef HAS_SCREEN
 
+#ifdef MARAUDER_SENSECAP
+  #include "Indicator_Extender.h"
+  #include "Indicator_SWSPI.h"
+  #include "src/Display/Indicator_RGB_Display.h"
+  #include "src/Display/lvgldriver.h"
+
+  #define HOR_RES 480
+  #define VER_RES 480
+
+  extern Arduino_DataBus *bus;
+
+  Arduino_RGB_Display *gfx = nullptr;
+    #define TOUCH_MODULES_FT5x06
+  #define TOUCH_MODULE_ADDR (0x48)
+  #include <Wire.h>
+  #include <TouchLib.h>
+  #include "Indicator_Extender.h"
+
+  TouchLib touch_sensecap(Wire, EXTENDER_SDA, EXTENDER_SCL, TOUCH_MODULE_ADDR);
+
+  bool sensecap_touch_init_done = false;
+#endif
+
 Display::Display()
 #ifdef HAS_CYD_TOUCH
   : touchscreenSPI(VSPI),
@@ -12,7 +35,7 @@ Display::Display()
 }
 
 int8_t Display::menuButton(uint16_t *x, uint16_t *y, bool pressed, bool check_hold) {
-  #ifdef HAS_ILI9341
+  #if defined(HAS_ILI9341) || defined(MARAUDER_SENSECAP)
     for (uint8_t b = BUTTON_ARRAY_LEN; b < BUTTON_ARRAY_LEN + 3; b++) {
       if (pressed && this->key[b].contains(*x, *y)) {
         this->key[b].press(true);  // tell the button it is pressed
@@ -40,6 +63,17 @@ int8_t Display::menuButton(uint16_t *x, uint16_t *y, bool pressed, bool check_ho
 }
 
 uint8_t Display::updateTouch(uint16_t *x, uint16_t *y, uint16_t threshold) {
+  #ifdef MARAUDER_SENSECAP
+    if (!this->headless_mode && sensecap_touch_init_done) {
+      if (touch_sensecap.read()) {
+        TP_Point t = touch_sensecap.getPoint(0);
+        *x = 479 - t.x;
+        *y = 479 - t.y;
+        return 1;
+      }
+    }
+    return 0;
+  #endif
   #ifdef HAS_ILI9341
     if (!this->headless_mode)
       #ifndef HAS_CYD_TOUCH
@@ -112,7 +146,7 @@ bool Display::isTouchHeld(uint16_t threshold) {
 void Display::init() {
   tft.init();
 
-  #if defined(HAS_DUAL_BAND) && !defined(MARAUDER_MINI_V3)
+  #ifdef HAS_DUAL_BAND
     digitalWrite(TFT_BL, HIGH);
   #endif
 }
@@ -167,12 +201,46 @@ void Display::RunSetup() {
     this->touchscreen.begin(touchscreenSPI);
     this->touchscreen.setRotation(0);
   #endif
-  
+
+  #ifdef MARAUDER_SENSECAP
+    extender_init();
+
+    static Arduino_DataBus *bus = new Indicator_SWSPI(
+      GFX_NOT_DEFINED,
+      EXPANDER_IO_LCD_CS,
+      SPI_SCLK,
+      SPI_MOSI,
+      GFX_NOT_DEFINED);
+
+    static Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
+      18, 17, 16, 21,
+      4, 3, 2, 1, 0,
+      10, 9, 8, 7, 6, 5,
+      15, 14, 13, 12, 11,
+      1, 10, 8, 50,
+      1, 10, 8, 20);
+
+    gfx = new Arduino_RGB_Display(
+      HOR_RES, VER_RES, rgbpanel, 0, true,
+      bus, GFX_NOT_DEFINED,
+      st7701_indicator_init_operations,
+      sizeof(st7701_indicator_init_operations));
+
+    gfx->begin();
+    gfx->fillScreen(TFT_BLACK);
+
+  #endif
+
   tft.init();
 
   tft.setRotation(SCREEN_ORIENTATION);
 
   tft.setCursor(0, 0);
+
+  #ifdef MARAUDER_SENSECAP
+    touch_sensecap.init();
+    sensecap_touch_init_done = true;
+  #endif
 
   #ifdef HAS_ILI9341
 
@@ -500,11 +568,11 @@ void Display::touchToExit()
 // Function to just draw the screen black
 void Display::clearScreen()
 {
-  //Serial.println(F("clearScreen()"));
+  //Serial.printlnln(F("clearScreen()"));
   #ifndef MARAUDER_V7
     tft.fillScreen(TFT_BLACK);
     tft.setCursor(0, 0);
-  #elif defined(MARAUDER_MINI) || defined(MARAUDER_MINI_V3)
+  #elif defined(MARAUDER_MINI)
     tft.fillRect(0, 0, TFT_WIDTH, TFT_HEIGHT, TFT_BLACK);
     tft.setCursor(0, 0);
   #else

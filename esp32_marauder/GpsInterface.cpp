@@ -8,7 +8,7 @@ char nmeaBuffer[100];
 
 MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 
-HardwareSerial Serial2(GPS_SERIAL_INDEX);
+// HardwareSerial Serial2(GPS_SERIAL_INDEX);
 
 static const char *PCAS_SET_115200 = "$PCAS01,5*19\r\n";
 

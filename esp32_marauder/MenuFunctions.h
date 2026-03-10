@@ -98,8 +98,6 @@ extern Settings settings_obj;
 #define FORCE 39
 #define FUNNY_BEACON 40
 #define FLOCK 41
-#define BRIGHTNESS 42
-#define SETTINGS 43
 
 struct Menu;
 
@@ -163,9 +161,9 @@ class MenuFunctions
     Menu wifiSnifferMenu;
     Menu wifiScannerMenu;
     Menu wifiAttackMenu;
-    /*#ifdef HAS_GPS
+    #ifdef HAS_GPS
       Menu wardrivingMenu;
-    #endif*/
+    #endif
     Menu wifiGeneralMenu;
     Menu wifiAPMenu;
     Menu wifiIPMenu;
@@ -274,9 +272,7 @@ class MenuFunctions
     void changeMenu(Menu* menu, bool simple_change = false);
     void drawStatusBar();
     void displayCurrentMenu(int start_index = 0);
-    #ifndef HAS_MINI_SCREEN
-      void brightnessMode();
-    #endif
+    void brightnessMode();
     void main(uint32_t currentTime);
     void RunSetup();
     void orientDisplay();
@@ -285,5 +281,4 @@ class MenuFunctions
 
 #endif
 #endif
-
 
