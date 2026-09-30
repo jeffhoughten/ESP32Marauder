@@ -1,6 +1,6 @@
 /* FLASH SETTINGS
 Board: LOLIN D32
-Flash Frequency: 80MHz
+ Frequency: 80MHz
 Partition Scheme: Minimal SPIFFS
 https://www.online-utility.org/image/convert/to/XBM
 */
@@ -39,13 +39,18 @@ https://www.online-utility.org/image/convert/to/XBM
   #include "xiaoLED.h"
 #elif defined(MARAUDER_M5STICKC) || defined(MARAUDER_M5STICKCP2)
   #include "stickcLED.h"
-#elif defined(HAS_NEOPIXEL_LED)
+#elif defined(HAS_NEOPIXEL_LED) || defined(HAS_T_DONGLE_LED)
   #include "LedInterface.h"
 #endif
 
 #include "settings.h"
 #include "CommandLine.h"
+#include "ReconMission.h"
 #include "lang_var.h"
+
+#ifdef HAS_T_DONGLE_DISPLAY
+  #include "TDongleDisplay.h"
+#endif
 
 #ifdef HAS_BATTERY
   #include "BatteryInterface.h"
@@ -82,6 +87,11 @@ EvilPortal evil_portal_obj;
 Buffer buffer_obj;
 Settings settings_obj;
 CommandLine cli_obj;
+ReconMission recon_obj;
+
+#ifdef HAS_T_DONGLE_DISPLAY
+  TDongleDisplay t_dongle_display;
+#endif
 
 #ifdef HAS_GPS
   GpsInterface gps_obj;
@@ -100,17 +110,13 @@ CommandLine cli_obj;
   SDInterface sd_obj;
 #endif
 
-#ifdef MARAUDER_M5STICKC
-  AXP192 axp192_obj;
-#endif
-
 #ifdef HAS_FLIPPER_LED
   flipperLED flipper_led;
 #elif defined(XIAO_ESP32_S3)
   xiaoLED xiao_led;
 #elif defined(MARAUDER_M5STICKC) || defined(MARAUDER_M5STICKCP2)
   stickcLED stickc_led;
-#elif defined(HAS_NEOPIXEL_LED)
+#elif defined(HAS_NEOPIXEL_LED) || defined(HAS_T_DONGLE_LED)
   LedInterface led_obj;
 #endif
 
@@ -136,76 +142,104 @@ uint32_t currentTime  = 0;
 
 // Helper macros for LEDC API compatibility (2.x vs 3.x board package)
 #ifdef HAS_SCREEN
-  #if ESP_ARDUINO_VERSION_MAJOR >= 3
-    #define BL_SETUP()       ledcAttach(TFT_BL, BL_FREQ, BL_RESOLUTION)
-    #define BL_SET(duty)     ledcWrite(TFT_BL, (duty))
-  #else
-    #define BL_SETUP()       do { ledcSetup(BL_CHANNEL, BL_FREQ, BL_RESOLUTION); ledcAttachPin(TFT_BL, BL_CHANNEL); } while(0)
-    #define BL_SET(duty)     ledcWrite(BL_CHANNEL, (duty))
+  #ifndef HAS_MINI_SCREEN
+    #if ESP_ARDUINO_VERSION_MAJOR >= 3
+      #define BL_SETUP()       ledcAttach(TFT_BL, BL_FREQ, BL_RESOLUTION)
+      #define BL_SET(duty)     ledcWrite(TFT_BL, (duty))
+    #else
+      #define BL_SETUP()       do { ledcSetup(BL_CHANNEL, BL_FREQ, BL_RESOLUTION); ledcAttachPin(TFT_BL, BL_CHANNEL); } while(0)
+      #define BL_SET(duty)     ledcWrite(BL_CHANNEL, (duty))
+    #endif
   #endif
 #endif
 
-void brightnessInit() {
-  #ifdef HAS_SCREEN
-    BL_SETUP();
-    bl_prefs.begin("backlight", false);
-    bl_level_idx = bl_prefs.getUChar("level", 9);
-    if (bl_level_idx >= BL_NUM_LEVELS) bl_level_idx = 9;
-    BL_SET(BL_LEVELS[bl_level_idx]);
-  #endif
-}
-
-void brightnessCycle() {
-  #ifdef HAS_SCREEN
-    bl_level_idx = (bl_level_idx + 1) % BL_NUM_LEVELS;
-    BL_SET(BL_LEVELS[bl_level_idx]);
-    bl_prefs.putUChar("level", bl_level_idx);
-    Serial.print(F("[Brightness] Level "));
-    Serial.print(bl_level_idx + 1);
-    Serial.print(F("/"));
-    Serial.print(BL_NUM_LEVELS);
-    Serial.print(F(" ("));
-    Serial.print(BL_LEVELS[bl_level_idx] * 100 / 255);
-    Serial.println(F("%)"));
-  #endif
-}
-
-uint8_t getBrightnessLevel() {
-  #ifdef HAS_SCREEN
-    return bl_level_idx;
-  #else
-    return 0;
-  #endif
-}
-
-void brightnessSave(uint8_t level) {
-  #ifdef HAS_SCREEN
-    if (level >= BL_NUM_LEVELS) level = BL_NUM_LEVELS - 1;
-    bl_level_idx = level;
-    BL_SET(BL_LEVELS[bl_level_idx]);
-    bl_prefs.putUChar("level", bl_level_idx);
-  #endif
-}
-
-void backlightOn() {
-  #ifdef HAS_SCREEN
-    #ifdef MARAUDER_SENSECAP
-      digitalWrite(TFT_BL, HIGH);
-    #else
+#ifndef HAS_MINI_SCREEN
+  void brightnessInit() {
+    #ifdef HAS_SCREEN
+      BL_SETUP();
+      bl_prefs.begin("backlight", false);
+      bl_level_idx = bl_prefs.getUChar("level", 9);
+      if (bl_level_idx >= BL_NUM_LEVELS) bl_level_idx = 9;
       BL_SET(BL_LEVELS[bl_level_idx]);
     #endif
-  #endif
-}
+  }
 
-void backlightOff() {
-  #ifdef HAS_SCREEN
-    #ifdef MARAUDER_SENSECAP
-      digitalWrite(TFT_BL, LOW);
-    #else
-      BL_SET(0);
+  void brightnessCycle() {
+    #ifdef HAS_SCREEN
+      bl_level_idx = (bl_level_idx + 1) % BL_NUM_LEVELS;
+      BL_SET(BL_LEVELS[bl_level_idx]);
+      bl_prefs.putUChar("level", bl_level_idx);
+      Serial.print(F("[Brightness] Level "));
+      Serial.print(bl_level_idx + 1);
+      Serial.print(F("/"));
+      Serial.print(BL_NUM_LEVELS);
+      Serial.print(F(" ("));
+      Serial.print(BL_LEVELS[bl_level_idx] * 100 / 255);
+      Serial.println(F("%)"));
     #endif
-  #endif
-}
+  }
+
+  uint8_t getBrightnessLevel() {
+    #ifdef HAS_SCREEN
+      return bl_level_idx;
+    #else
+      return 0;
+    #endif
+  }
+
+  void brightnessSave(uint8_t level) {
+    #ifdef HAS_SCREEN
+      if (level >= BL_NUM_LEVELS) level = BL_NUM_LEVELS - 1;
+      bl_level_idx = level;
+      BL_SET(BL_LEVELS[bl_level_idx]);
+      bl_prefs.putUChar("level", bl_level_idx);
+    #endif
+  }
+
+  void backlightOn() {
+    #ifdef HAS_SCREEN
+      #ifdef MARAUDER_SENSECAP
+        digitalWrite(TFT_BL, HIGH);
+      #else
+        BL_SET(BL_LEVELS[bl_level_idx]);
+      #endif
+    #endif
+  }
+
+  void backlightOff() {
+    #ifdef HAS_SCREEN
+      #ifdef MARAUDER_SENSECAP
+        digitalWrite(TFT_BL, LOW);
+      #else
+        BL_SET(0);
+      #endif
+    #endif
+  }
+#else
+  void backlightOn() {
+    #ifdef HAS_SCREEN
+      #if defined(MARAUDER_MINI) || defined(MARAUDER_MINI_V3)
+        digitalWrite(TFT_BL, LOW);
+      #endif
+    
+      #if !defined(MARAUDER_MINI) && !defined(MARAUDER_MINI_V3)
+        digitalWrite(TFT_BL, HIGH);
+      #endif
+    #endif
+  }
+
+  void backlightOff() {
+    #ifdef HAS_SCREEN
+      #if defined(MARAUDER_MINI) || defined(MARAUDER_MINI_V3)
+        digitalWrite(TFT_BL, HIGH);
+      #endif
+    
+      #if !defined(MARAUDER_MINI) && !defined(MARAUDER_MINI_V3)
+        digitalWrite(TFT_BL, LOW);
+      #endif
+    #endif
+  }
+#endif
 
 #ifdef HAS_C5_SD
   SPIClass sharedSPI(SPI);
@@ -226,16 +260,18 @@ void setup()
 
   Serial.begin(115200);
 
+  #ifdef HAS_ACT_LED
+    pinMode(ACT_LED_PIN, OUTPUT);
+    delay(100);
+    digitalWrite(ACT_LED_PIN, LOW);
+  #endif
+
   while(!Serial)
     delay(10);
 
   #ifdef HAS_C5_SD
     sharedSPI.begin(SD_SCK, SD_MISO, SD_MOSI);
     delay(100);
-  #endif
-
-  #ifdef defined(MARAUDER_M5STICKC) && !defined(MARAUDER_M5STICKCP2)
-    axp192_obj.begin();
   #endif
 
   #if defined(MARAUDER_M5STICKCP2) // Prevent StickCP2 from turning off when disconnect USB cable
@@ -299,22 +335,18 @@ void setup()
   #endif
 
   // Init PWM brightness AFTER display init (so ledcAttach overrides TFT_eSPI's pinMode)
-  brightnessInit();
-  backlightOff();
-  delay(200);
-  #ifdef HAS_SCREEN
-    #ifndef MARAUDER_CARDPUTER
-      display_obj.tft.drawCentreString("ESP32 Marauder", TFT_WIDTH/2, TFT_HEIGHT * 0.33, 1);
-      display_obj.tft.drawCentreString("JustCallMeKoko", TFT_WIDTH/2, TFT_HEIGHT * 0.5, 1);
-      display_obj.tft.drawCentreString(display_obj.version_number, TFT_WIDTH/2, TFT_HEIGHT * 0.66, 1);
-    #else
-      display_obj.tft.drawCentreString("ESP32 Marauder", TFT_HEIGHT/2, TFT_WIDTH * 0.33, 1);
-      display_obj.tft.drawCentreString("JustCallMeKoko", TFT_HEIGHT/2, TFT_WIDTH * 0.5, 1);
-      display_obj.tft.drawCentreString(display_obj.version_number, TFT_HEIGHT/2, TFT_WIDTH * 0.66, 1);
-    #endif
+  #ifndef HAS_MINI_SCREEN
+    brightnessInit();
+    backlightOff();
   #endif
 
+  #ifdef HAS_SCREEN
+    display_obj.drawBootSplash();
+  #endif
+
+
   backlightOn(); // Need this
+
   #ifdef HAS_SCREEN
     // Do some stealth mode stuff
     #ifdef HAS_BUTTONS
@@ -328,7 +360,9 @@ void setup()
 
   settings_obj.begin();
 
-  if (settings_obj.getSettingType("ChanHop") == "") {
+  const char* type = settings_obj.getSettingType("wu");
+
+  if (type == nullptr || type[0] == '\0') {
     Serial.println(F("Current settings format not supported. Installing new default settings..."));
     settings_obj.createDefaultSettings(SPIFFS);
   }
@@ -346,9 +380,8 @@ void setup()
 
   wifi_scan_obj.RunSetup();
 
-  #ifdef HAS_SCREEN
-    display_obj.tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    display_obj.tft.drawCentreString("Initializing...", TFT_WIDTH/2, TFT_HEIGHT * 0.82, 1);
+  #ifdef HAS_T_DONGLE_DISPLAY
+    t_dongle_display.begin();
   #endif
 
   evil_portal_obj.setup();
@@ -368,7 +401,7 @@ void setup()
     xiao_led.RunSetup();
   #elif defined(MARAUDER_M5STICKC)
     stickc_led.RunSetup();
-  #elif defined(HAS_NEOPIXEL_LED)
+  #elif defined(HAS_NEOPIXEL_LED) || defined(HAS_T_DONGLE_LED)
     led_obj.RunSetup();
   #endif
 
@@ -381,6 +414,9 @@ void setup()
   #endif
 
   #ifdef HAS_SCREEN
+    #if defined(MARAUDER_CARDPUTER) || defined(MARAUDER_CARDPUTER_ADV)
+      display_obj.clearScreen();
+    #endif
     menu_function_obj.RunSetup();
   #endif
 
@@ -433,6 +469,11 @@ void loop()
   // Update all of our objects
   cli_obj.main(currentTime);
   wifi_scan_obj.main(currentTime);
+  recon_obj.main(currentTime);
+
+  #ifdef HAS_T_DONGLE_DISPLAY
+    t_dongle_display.update(currentTime, wifi_scan_obj);
+  #endif
 
   #ifdef HAS_GPS
     gps_obj.main();
@@ -456,6 +497,10 @@ void loop()
     xiao_led.main();
   #elif defined(MARAUDER_M5STICKC)
     stickc_led.main();
+  #elif defined(HAS_T_DONGLE_LED)
+    // The LED shares GPIO2/GPIO7 with the display/SD bus. Always make it the
+    // final writer so later SPI activity cannot leave it latched white.
+    led_obj.refresh();
   #elif defined(HAS_NEOPIXEL_LED)
     led_obj.main(currentTime);
   #endif

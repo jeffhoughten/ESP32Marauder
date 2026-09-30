@@ -1,11 +1,63 @@
 #include "CommandLine.h"
 
+// GCOVR_EXCL_START -- serial protocol output depends on Arduino Serial.
+namespace {
+  bool parseFiniteNumber(const String& value, double& parsed) {
+    char* end = nullptr;
+    parsed = strtod(value.c_str(), &end);
+    return end != value.c_str() && *end == '\0' && isfinite(parsed);
+  }
+  bool validTransactionId(const String& transaction_id) {
+    if (transaction_id.length() == 0 || transaction_id.length() > 40)
+      return false;
+
+    for (size_t i = 0; i < transaction_id.length(); i++) {
+      char c = transaction_id.charAt(i);
+      if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+            (c >= 'a' && c <= 'z') || c == '-' || c == '_' || c == '.'))
+        return false;
+    }
+    return true;
+  }
+
+  void machineResult(
+    const String& transaction_id,
+    const char* command,
+    const char* status,
+    const char* code,
+    size_t files = 0,
+    size_t bytes = 0,
+    bool rebooting = false
+  ) {
+    Serial.printf(
+      "@MARAUDER:{\"protocol\":1,\"tx\":\"%s\",\"command\":\"%s\","
+      "\"status\":\"%s\",\"code\":\"%s\",\"files\":%u,\"bytes\":%u,"
+      "\"rebooting\":%s}\n",
+      transaction_id.c_str(), command, status, code,
+      (unsigned)files, (unsigned)bytes, rebooting ? "true" : "false"
+    );
+  }
+
+  const char* storageErrorCode(uint8_t error, const char* fallback) {
+    if (error == 1)
+      return "SD_NOT_READY";
+    if (error == 2)
+      return "BACKUP_NOT_FOUND";
+    return fallback;
+  }
+}
+// GCOVR_EXCL_STOP
+
 // Brightness functions defined in esp32_marauder.ino
-extern void brightnessCycle();
-extern uint8_t getBrightnessLevel();
+#ifndef HAS_MINI_SCREEN
+  extern void brightnessCycle();
+  extern uint8_t getBrightnessLevel();
+#endif
 
 void CommandLine::RunSetup() {
-  Serial.println(this->ascii_art);
+  #ifndef MARAUDER_V8
+    Serial.println(this->ascii_art);
+  #endif
 
   Serial.println(F("\n\n--------------------------------\n"));
   Serial.println(F("         ESP32 Marauder      \n"));
@@ -75,9 +127,12 @@ LinkedList<String> CommandLine::parseCommand(String input, char* delim) {
   return cmd_args;
 }
 
-int CommandLine::argSearch(LinkedList<String>* cmd_args_list, String key) {
+int CommandLine::argSearch(LinkedList<String>* cmd_args_list, const char* key) {
+  if (!cmd_args_list || !key)
+    return -1;
+
   for (int i = 0; i < cmd_args_list->size(); i++) {
-    if (cmd_args_list->get(i) == key)
+    if (strcmp(cmd_args_list->get(i).c_str(), key) == 0)
       return i;
   }
 
@@ -152,6 +207,7 @@ void CommandLine::filterAccessPoints(String filter) {
 
   // Loop over each access point and check if it matches any of the filters
   for (int i = 0; i < access_points->size(); i++) {
+    AccessPoint access_point = access_points->get(i);
     bool matchesFilter = false;
     for (int j = 0; j < filters.size(); j++) {
       String f = toLowerCase(filters.get(j));
@@ -161,7 +217,7 @@ void CommandLine::filterAccessPoints(String filter) {
             (ssidEquals.charAt(0) == '\'' && ssidEquals.charAt(ssidEquals.length() - 1) == '\'' && ssidEquals.length() > 1)) {
           ssidEquals = ssidEquals.substring(1, ssidEquals.length() - 1);
         }
-        if (access_points->get(i).essid.equalsIgnoreCase(ssidEquals)) {
+        if (access_point.essid.equalsIgnoreCase(ssidEquals)) {
           matchesFilter = true;
           break;
         }
@@ -171,7 +227,7 @@ void CommandLine::filterAccessPoints(String filter) {
             (ssidContains.charAt(0) == '\'' && ssidContains.charAt(ssidContains.length() - 1) == '\'' && ssidContains.length() > 1)) {
           ssidContains = ssidContains.substring(1, ssidContains.length() - 1);
         }
-        String essid = toLowerCase(access_points->get(i).essid);
+        String essid = toLowerCase(access_point.essid);
         if (essid.indexOf(ssidContains) != -1) {
           matchesFilter = true;
           break;
@@ -179,9 +235,8 @@ void CommandLine::filterAccessPoints(String filter) {
       }
     }
     // Toggles the selected state of the AP
-    AccessPoint new_ap = access_points->get(i);
-    new_ap.selected = matchesFilter;
-    access_points->set(i, new_ap);
+    access_point.selected = matchesFilter;
+    access_points->set(i, access_point);
 
     if (matchesFilter) {
       count_selected++;
@@ -193,7 +248,7 @@ void CommandLine::filterAccessPoints(String filter) {
   this->showCounts(count_selected, count_unselected);
 }
 
-void CommandLine::startScanFromCLI(int scan_mode, uint16_t color, String scan_name) {
+void CommandLine::startScanFromCLI(int scan_mode, uint16_t color, const char* scan_name) {
   Serial.print(F("Starting"));
   Serial.print(scan_name);
   Serial.print(F(". Stop with "));
@@ -222,16 +277,26 @@ void CommandLine::runCommand(String input) {
     Serial.println(HELP_HEAD);
     Serial.println(HELP_CH_CMD);
     Serial.println(HELP_SETTINGS_CMD);
+    Serial.println(HELP_GEOFENCE_CMD);
     Serial.println(HELP_CLEARAP_CMD_A);
     Serial.println(HELP_REBOOT_CMD);
     Serial.println(HELP_UPDATE_CMD_A);
     Serial.println(HELP_LS_CMD);
+    // GCOVR_EXCL_START -- hardware-only command help entry.
+    Serial.println(HELP_PROTOCOL_INFO_CMD);
+    #ifdef HAS_SD
+      Serial.println(HELP_BACKUP_SPIFFS_CMD);
+      Serial.println(HELP_BACKUP_STATUS_CMD);
+      Serial.println(HELP_RESTORE_SPIFFS_CMD);
+    #endif
+    // GCOVR_EXCL_STOP
     Serial.println(HELP_LED_CMD);
     Serial.println(HELP_GPS_DATA_CMD);
     Serial.println(HELP_GPS_CMD);
     Serial.println(HELP_NMEA_CMD);
     Serial.println(HELP_GPS_POI_CMD);
     Serial.println(HELP_GPS_TRACKER_CMD);
+    Serial.println(HELP_RECON_CMD);
     
     // WiFi sniff/scan
     Serial.println(HELP_EVIL_PORTAL_CMD);
@@ -242,8 +307,7 @@ void CommandLine::runCommand(String input) {
     Serial.println(HELP_PORT_SCAN_CMD);
     Serial.println(HELP_SIGSTREN_CMD);
     Serial.println(HELP_SCAN_ALL_CMD);
-    Serial.println(HELP_SCANAP_CMD);
-    Serial.println(HELP_SCANSTA_CMD);
+    //Serial.println(HELP_SCANSTA_CMD);
     Serial.println(HELP_SNIFF_RAW_CMD);
     Serial.println(HELP_SNIFF_BEACON_CMD);
     Serial.println(HELP_SNIFF_PROBE_CMD);
@@ -256,6 +320,7 @@ void CommandLine::runCommand(String input) {
     Serial.println(HELP_STOPSCAN_CMD);
     #ifdef HAS_GPS
       Serial.println(HELP_WARDRIVE_CMD);
+      Serial.println(HELP_WARDRIVEPOI_CMD);
     #endif
     Serial.println(HELP_MAC_TRACK_CMD);
     
@@ -270,6 +335,10 @@ void CommandLine::runCommand(String input) {
     Serial.println(HELP_LIST_AP_CMD_D);
     Serial.println(HELP_LIST_AP_CMD_E);
     Serial.println(HELP_LIST_AP_CMD_F);
+    Serial.println(HELP_LIST_AP_CMD_G);
+    Serial.println(HELP_LIST_AP_CMD_H);
+    Serial.println(HELP_LIST_AP_CMD_I);
+    Serial.println(HELP_LIST_AP_CMD_J);
     Serial.println(HELP_SEL_CMD_A);
     Serial.println(HELP_SSID_CMD_A);
     Serial.println(HELP_SSID_CMD_B);
@@ -282,15 +351,14 @@ void CommandLine::runCommand(String input) {
     Serial.println(HELP_MAC_CMD_D);
     Serial.println(HELP_ADD_CMD_A);
     Serial.println(HELP_ADD_CMD_B);
+    Serial.println(HELP_UPLOAD_CMD);
 
     // Bluetooth sniff/scan
     #ifdef HAS_BT
       Serial.println(HELP_BT_SNIFF_CMD);
       Serial.println(HELP_BT_SPAM_CMD);
+      Serial.println(HELP_BT_FINDMY_CMD);
       Serial.println(HELP_BT_SPOOFAT_CMD);
-      #ifdef HAS_GPS
-        Serial.println(HELP_BT_WARDRIVE_CMD);
-      #endif
       Serial.println(HELP_BT_SKIM_CMD);
     #endif
     Serial.println(HELP_BRIGHTNESS_CMD);
@@ -310,6 +378,7 @@ void CommandLine::runCommand(String input) {
     }
 
     wifi_scan_obj.StartScan(WIFI_SCAN_OFF);
+    recon_obj.stop();
 
     if(old_scan_mode == WIFI_SCAN_GPS_NMEA)
       Serial.println(F("END OF NMEA STREAM"));
@@ -323,6 +392,30 @@ void CommandLine::runCommand(String input) {
       display_obj.init();
       menu_function_obj.changeMenu(menu_function_obj.current_menu);
     #endif
+  }
+  else if (cmd_args.get(0) == RECON_CMD) {
+    if (cmd_args.size() < 2 || cmd_args.get(1) == "status") {
+      Serial.println(recon_obj.active() ? F("active") : F("stopped"));
+    }
+    else if (cmd_args.get(1) == "stop") {
+      recon_obj.stop();
+      wifi_scan_obj.StartScan(WIFI_SCAN_OFF);
+      Serial.println(F("stopped"));
+    }
+    else {
+      if (wifi_scan_obj.scanning()) {
+        Serial.println(F("Stop the current scan before starting Recon"));
+      }
+      else if (cmd_args.get(1) == "wifi") {
+        if (recon_obj.start(ReconMode::WIFI_RECON)) Serial.println(F("active"));
+      }
+      #ifdef HAS_BT
+        else if (cmd_args.get(1) == "ble") {
+          if (recon_obj.start(ReconMode::BLE_RECON)) Serial.println(F("active"));
+        }
+      #endif
+      else Serial.println(HELP_RECON_CMD);
+    }
   }
   else if (cmd_args.get(0) == GPS_DATA_CMD) {
     #ifdef HAS_GPS
@@ -396,8 +489,6 @@ void CommandLine::runCommand(String input) {
             Serial.print(F("GPS Output Type Set To: "));
             Serial.println(nmea_type);
           }
-          else
-            Serial.println(F("You did not provide a valid argument"));
         }
         else if (track_arg != -1) {
           wifi_scan_obj.currentScanMode = GPS_TRACKER;
@@ -408,8 +499,6 @@ void CommandLine::runCommand(String input) {
         }
         else if(cmd_args.size()>1)
           Serial.println(F("You did not provide a valid flag"));
-        else
-          Serial.println(F("You did not provide an argument"));
       }
     #endif
   }
@@ -419,7 +508,6 @@ void CommandLine::runCommand(String input) {
         #ifdef HAS_SCREEN
           menu_function_obj.changeMenu(&menu_function_obj.gpsInfoMenu);
         #endif
-        Serial.println(F("NMEA STREAM FOLLOWS"));
         wifi_scan_obj.currentScanMode = WIFI_SCAN_GPS_NMEA;
         wifi_scan_obj.StartScan(WIFI_SCAN_GPS_NMEA, TFT_CYAN);
       }
@@ -449,8 +537,6 @@ void CommandLine::runCommand(String input) {
           led_obj.setMode(MODE_RAINBOW);
         }
       }
-    //#else
-    //  Serial.println(F("This hardware does not support neopixel"));
     #endif
   }
   // ls command
@@ -458,10 +544,95 @@ void CommandLine::runCommand(String input) {
     #ifdef HAS_SD
       if (cmd_args.size() > 1)
         sd_obj.listDir(cmd_args.get(1));
-      else
-        Serial.println(F("You did not provide a dir to list"));
     #endif
   }
+  // GCOVR_EXCL_START -- requires mounted SPIFFS and SD filesystems.
+  else if (cmd_args.get(0) == PROTOCOL_INFO_CMD) {
+    int machine_arg = this->argSearch(&cmd_args, "--machine");
+    String transaction_id = machine_arg >= 0 && machine_arg + 1 < cmd_args.size()
+      ? cmd_args.get(machine_arg + 1) : "";
+    if (machine_arg >= 0 && !validTransactionId(transaction_id))
+      machineResult(transaction_id, PROTOCOL_INFO_CMD, "error", "INVALID_TRANSACTION");
+    else if (machine_arg >= 0) {
+      #ifdef HAS_SD
+        Serial.printf(
+          "@MARAUDER:{\"protocol\":1,\"tx\":\"%s\",\"command\":\"protocolinfo\","
+          "\"status\":\"success\",\"code\":\"OK\",\"firmware\":\"%s\","
+          "\"capabilities\":[\"spiffs-backup\",\"spiffs-backup-status\","
+          "\"spiffs-restore\"],\"backupPath\":\"/spiffs\"}\n",
+          transaction_id.c_str(), version_number.c_str()
+        );
+      #else
+        Serial.printf(
+          "@MARAUDER:{\"protocol\":1,\"tx\":\"%s\",\"command\":\"protocolinfo\","
+          "\"status\":\"success\",\"code\":\"OK\",\"firmware\":\"%s\","
+          "\"capabilities\":[]}\n",
+          transaction_id.c_str(), version_number.c_str()
+        );
+      #endif
+    }
+  }
+  else if (cmd_args.get(0) == BACKUP_SPIFFS_CMD ||
+           cmd_args.get(0) == BACKUP_STATUS_CMD ||
+           cmd_args.get(0) == RESTORE_SPIFFS_CMD) {
+    uint8_t operation = cmd_args.get(0) == BACKUP_SPIFFS_CMD ? 0 :
+                        cmd_args.get(0) == BACKUP_STATUS_CMD ? 1 : 2;
+    const char* command = operation == 0 ? BACKUP_SPIFFS_CMD :
+                          operation == 1 ? BACKUP_STATUS_CMD : RESTORE_SPIFFS_CMD;
+    int machine_arg = this->argSearch(&cmd_args, "--machine");
+    String transaction_id = machine_arg >= 0 && machine_arg + 1 < cmd_args.size()
+      ? cmd_args.get(machine_arg + 1) : "";
+    bool machine = machine_arg >= 0;
+    if (machine && !validTransactionId(transaction_id)) {
+      machineResult(transaction_id, command, "error", "INVALID_TRANSACTION");
+      return;
+    }
+    #ifdef HAS_SD
+      size_t files = 0;
+      size_t bytes = 0;
+      uint8_t error = 0;
+      if (machine && operation != 1)
+        machineResult(transaction_id, command, "started", "OK");
+      else if (!machine && operation != 1)
+        Serial.printf("SPIFFS %s started\n", operation == 0 ? "backup" : "restore");
+
+      bool success = sd_obj.migrateSPIFFS(operation, files, bytes, error);
+      if (machine) {
+        if (success)
+          machineResult(transaction_id, command, "success", "OK", files, bytes, operation == 2);
+        else {
+          const char* fallback = operation == 0 ? "BACKUP_FAILED" :
+                                 operation == 1 ? "BACKUP_INSPECTION_FAILED" : "RESTORE_FAILED";
+          machineResult(transaction_id, command, "error", storageErrorCode(error, fallback));
+        }
+      }
+      else if (success) {
+        const char* action = operation == 0 ? "backup complete" :
+                             operation == 1 ? "backup status" : "restore complete";
+        Serial.printf("SPIFFS %s: %u files, %u bytes%s\n", action,
+                      static_cast<unsigned int>(files),
+                      static_cast<unsigned int>(bytes),
+                      operation == 2 ? "; rebooting" : "");
+      }
+      else {
+        const char* fallback = operation == 0 ? "BACKUP_FAILED" :
+                               operation == 1 ? "BACKUP_INSPECTION_FAILED" : "RESTORE_FAILED";
+        Serial.printf("SPIFFS %s failed: %s\n",
+                      operation == 0 ? "backup" : operation == 1 ? "backup status" : "restore",
+                      storageErrorCode(error, fallback));
+      }
+      if (success && operation == 2) {
+        delay(1000);
+        ESP.restart();
+      }
+    #else
+      if (machine)
+        machineResult(transaction_id, command, "error", "SD_NOT_SUPPORTED");
+      else
+        Serial.println(F("SD Card NOT Supported"));
+    #endif
+  }
+  // GCOVR_EXCL_STOP
 
   // Channel command
   else if (cmd_args.get(0) == CH_CMD) {
@@ -503,6 +674,48 @@ void CommandLine::runCommand(String input) {
     }
   }
 
+  else if (cmd_args.get(0) == UPLOAD_CMD) {
+    #ifdef HAS_DIRECT_UPLOAD
+      int dest_sw = this->argSearch(&cmd_args, "-d");
+      String upload_dest_arg = cmd_args.get(dest_sw + 1);
+      int upload_dest = -1;
+
+      if (upload_dest_arg == "wdg")
+        upload_dest = WDG_UPLOAD;
+      else if (upload_dest_arg == "wigle")
+        upload_dest = WIGLE_UPLOAD;
+      else if (upload_dest_arg == "both")
+        upload_dest = BOTH_UPLOAD;
+
+      if (upload_dest > -1) {
+        if (!wifi_scan_obj.joinSavedWiFi(false)) {
+          Serial.println(F("Failed to connect to saved WiFi"));
+          return;
+        }
+        delay(1000);
+        for (int i = 0; i < sd_obj.sd_files->size(); i++) {
+          if (sd_obj.sd_files->get(i).startsWith("wardrive_") || sd_obj.sd_files->get(i).startsWith("wigle-")) {
+            if (!sd_obj.sd_files->get(i).endsWith(".wigle") && !sd_obj.sd_files->get(i).endsWith(".wdg") && !sd_obj.sd_files->get(i).endsWith(".gpx")) {
+              Serial.println("Uploading " + sd_obj.sd_files->get(i) + "...");
+              if (wifi_scan_obj.uploadFile("/" + sd_obj.sd_files->get(i), true, upload_dest)) {
+                Serial.println("Upload OK");
+              } else {
+                Serial.println("WiGLE failed");
+              }
+            }
+          }
+        }
+        WiFi.disconnect(true);
+        delay(100);
+        wifi_scan_obj.StartScan(WIFI_SCAN_OFF, TFT_RED);
+
+        Serial.println("Upload complete");
+      }
+    #else
+      Serial.println("Direct upload not supported");
+    #endif
+  }
+
   else if (cmd_args.get(0) == SETTINGS_CMD) {
     int ss_sw = this->argSearch(&cmd_args, "-s"); // Set setting
     int re_sw = this->argSearch(&cmd_args, "-r"); // Reset setting
@@ -521,13 +734,11 @@ void CommandLine::runCommand(String input) {
       bool result = false;
       String setting_name = cmd_args.get(ss_sw + 1);
       if (en_sw != -1)
-        result = settings_obj.saveSetting<bool>(setting_name, true);
+        result = settings_obj.saveSetting<bool>(setting_name.c_str(), true);
       else if (da_sw != -1)
-        result = settings_obj.saveSetting<bool>(setting_name, false);
-      else {
-        Serial.println(F("You did not properly enable/disable this setting."));
+        result = settings_obj.saveSetting<bool>(setting_name.c_str(), false);
+      else
         return;
-      }
 
       if (!result) {
         Serial.print(F("Could not successfully update setting \""));
@@ -547,62 +758,136 @@ void CommandLine::runCommand(String input) {
 
     // Signal strength scan
     if (cmd_args.get(0) == SIGSTREN_CMD) {
-      this->startScanFromCLI(WIFI_SCAN_SIG_STREN, TFT_MAGENTA, "Signal Strength Scan");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_SIG_STREN, TFT_MAGENTA);*/
-      wifi_scan_obj.renderPacketRate();
+      int bt_sw = this->argSearch(&cmd_args, "-b");
+      int wf_sw = this->argSearch(&cmd_args, "-w");
+      int st_sw = this->argSearch(&cmd_args, "-s");
+      int at_sw = this->argSearch(&cmd_args, "-t");
+      int fl_sw = this->argSearch(&cmd_args, "-f");
+      int pn_sw = this->argSearch(&cmd_args, "-p");
+      int ms_sw = this->argSearch(&cmd_args, "-m");
+      if ((wf_sw > -1) && this->checkValueExists(&cmd_args, wf_sw)) {
+        int targ_index = cmd_args.get(wf_sw + 1).toInt();
+        if ((targ_index >= 0) && (targ_index < access_points->size())) {
+          const AccessPoint& target = access_points->get(targ_index);
+          wifi_scan_obj.setFoxHuntTarget(target.bssid, target.essid, target.rssi, target.channel, false);
+          this->startScanFromCLI(WIFI_SCAN_SIG_STREN, TFT_GREEN, "Fox Hunt");
+        }
+      }
+      else if ((st_sw > -1) && this->checkValueExists(&cmd_args, st_sw + 1)) {
+        int ap_index = cmd_args.get(st_sw + 1).toInt();
+        int station_index = cmd_args.get(st_sw + 2).toInt();
+        if ((ap_index >= 0) && (ap_index < access_points->size()) &&
+            (station_index >= 0) && (station_index < stations->size())) {
+          const AccessPoint& target_ap = access_points->get(ap_index);
+          bool belongs_to_ap = false;
+          for (int i = 0; i < target_ap.stations->size(); i++) {
+            if (target_ap.stations->get(i) == station_index) {
+              belongs_to_ap = true;
+              break;
+            }
+          }
+          if (belongs_to_ap) {
+            const Station& target = stations->get(station_index);
+            wifi_scan_obj.setFoxHuntTarget(target.mac, macToString(target.mac), -128, target_ap.channel, false);
+            this->startScanFromCLI(WIFI_SCAN_SIG_STREN, TFT_GREEN, "Station Fox Hunt");
+          }
+        }
+      }
+      else if ((bt_sw > -1) && this->checkValueExists(&cmd_args, bt_sw)) {
+        int targ_index = cmd_args.get(bt_sw + 1).toInt();
+        if ((targ_index >= 0) && (targ_index < ble_devices->size())) {
+          const BleDevice& target = ble_devices->get(targ_index);
+          wifi_scan_obj.setFoxHuntTarget(target.mac, target.name, target.rssi, 0, true, macToString(target.mac));
+          this->startScanFromCLI(BT_SCAN_FOX_HUNT, TFT_CYAN, "Bluetooth Fox Hunt");
+        }
+      }
+      else if ((at_sw > -1) && this->checkValueExists(&cmd_args, at_sw)) {
+        int targ_index = cmd_args.get(at_sw + 1).toInt();
+        if ((targ_index >= 0) && (targ_index < airtags->size())) {
+          const AirTag& target = airtags->get(targ_index);
+          uint8_t mac[6];
+          convertMacStringToUint8(target.mac, mac);
+          wifi_scan_obj.setFoxHuntTarget(mac, target.mac, target.rssi, 0, true, target.mac);
+          this->startScanFromCLI(BT_SCAN_FOX_HUNT, TFT_CYAN, "FindMy Fox Hunt");
+        }
+      }
+      else if ((fl_sw > -1) && this->checkValueExists(&cmd_args, fl_sw)) {
+        int targ_index = cmd_args.get(fl_sw + 1).toInt();
+        if ((targ_index >= 0) && (targ_index < flippers->size())) {
+          const Flipper& target = flippers->get(targ_index);
+          uint8_t mac[6];
+          convertMacStringToUint8(target.mac, mac);
+          wifi_scan_obj.setFoxHuntTarget(mac, target.name.length() ? target.name : target.mac, -128, 0, true, target.mac);
+          this->startScanFromCLI(BT_SCAN_FOX_HUNT, TFT_CYAN, "Flipper Zero Fox Hunt");
+        }
+      }
+      else if ((pn_sw > -1) && this->checkValueExists(&cmd_args, pn_sw)) {
+        int targ_index = cmd_args.get(pn_sw + 1).toInt();
+        if ((targ_index >= 0) && wifi_scan_obj.selectPineScanFoxTarget(targ_index))
+          this->startScanFromCLI(WIFI_SCAN_SIG_STREN, TFT_GREEN, "WiFi Pineapple Fox Hunt");
+      }
+      else if ((ms_sw > -1) && this->checkValueExists(&cmd_args, ms_sw)) {
+        int targ_index = cmd_args.get(ms_sw + 1).toInt();
+        if ((targ_index >= 0) && wifi_scan_obj.selectMultiSSIDFoxTarget(targ_index))
+          this->startScanFromCLI(WIFI_SCAN_SIG_STREN, TFT_GREEN, "MultiSSID Fox Hunt");
+      }
+      else
+        Serial.println(HELP_SIGSTREN_CMD);
     }
     // Packet count
     else if (cmd_args.get(0) == PACKET_COUNT_CMD) {
       this->startScanFromCLI(WIFI_SCAN_PACKET_RATE, TFT_ORANGE, "Packet Count Scan");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_PACKET_RATE, TFT_ORANGE);*/
+    }
+    // Geofence configuration
+    else if (cmd_args.get(0) == GEOFENCE_CMD) {
+      if (cmd_args.size() == 2 && cmd_args.get(1) == "list") {
+        bool any = false;
+        for (uint8_t i = 0; i < MAX_GEOFENCES; i++) {
+          GeofenceConfig fence;
+          if (!settings_obj.loadGeofence(i, fence)) continue;
+          any = true;
+          Serial.printf("%u: %s | %.6f, %.6f | %.2f mi\n", i + 1, fence.name.c_str(), fence.latitude, fence.longitude, fence.radiusMiles);
+        }
+        if (!any) Serial.println(F("No geofences configured"));
+      }
+      else if (cmd_args.size() == 3 && cmd_args.get(1) == "clear") {
+        const int slot = cmd_args.get(2).toInt();
+        if (slot < 1 || slot > MAX_GEOFENCES) Serial.println(F("Invalid slot; use 1-5"));
+        else {
+          settings_obj.clearGeofence(slot - 1);
+          wifi_scan_obj.reloadGeofences();
+          Serial.printf("Geofence %d cleared\n", slot);
+        }
+      }
+      else if (cmd_args.size() == 7 && cmd_args.get(1) == "set") {
+        const int slot = cmd_args.get(2).toInt();
+        double lat, lon, radius;
+        GeofenceConfig fence;
+        fence.enabled = true;
+        fence.name = cmd_args.get(6);
+        if (slot < 1 || slot > MAX_GEOFENCES || !parseFiniteNumber(cmd_args.get(3), lat) ||
+            !parseFiniteNumber(cmd_args.get(4), lon) || !parseFiniteNumber(cmd_args.get(5), radius)) {
+          Serial.println(HELP_GEOFENCE_CMD);
+        } else {
+          fence.latitude = lat;
+          fence.longitude = lon;
+          fence.radiusMiles = radius;
+          if (!settings_obj.saveGeofence(slot - 1, fence)) Serial.println(F("Invalid geofence: check name, coordinates, and radius"));
+          else {
+            wifi_scan_obj.reloadGeofences();
+            Serial.printf("Geofence %d saved\n", slot);
+          }
+        }
+      }
+      else Serial.println(HELP_GEOFENCE_CMD);
     }
     // Wardrive
     else if (cmd_args.get(0) == WARDRIVE_CMD) {
       #ifdef HAS_GPS
         if (gps_obj.getGpsModuleStatus()) {
-          int sta_sw = this->argSearch(&cmd_args, "-s");
-          int flk_sw = this->argSearch(&cmd_args, "-f");
-
-          if (flk_sw != -1) {
-            this->startScanFromCLI(BT_SCAN_FLOCK_WARDRIVE, TFT_GREEN, "Flock Wardrive");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_SCAN_FLOCK_WARDRIVE, TFT_GREEN);*/
-          }
-          else if (sta_sw != -1) {
-            this->startScanFromCLI(WIFI_SCAN_STATION_WAR_DRIVE, TFT_GREEN, "Station Wardrive");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(WIFI_SCAN_STATION_WAR_DRIVE, TFT_GREEN);*/
-          }
-          else {
-            this->startScanFromCLI(WIFI_SCAN_WAR_DRIVE, TFT_GREEN, "Wardrive");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(WIFI_SCAN_WAR_DRIVE, TFT_GREEN);*/
-          }
+          //int sta_sw = this->argSearch(&cmd_args, "-s");
+          this->startScanFromCLI(WIFI_SCAN_WAR_DRIVE, TFT_GREEN, "Wardrive");
         }
-        else
-          Serial.println(F("GPS Module not detected"));
       #else
         Serial.println(F("GPS not supported"));
       #endif
@@ -612,14 +897,12 @@ void CommandLine::runCommand(String input) {
       int pr_sw = this->argSearch(&cmd_args, "-p");
 
       if (pr_sw == -1) {
-        Serial.println(F("You did not provide a target index"));
         return;
       }
 
       int pr_index = cmd_args.get(pr_sw + 1).toInt();
 
       if ((pr_index < 0) || (pr_index > probe_req_ssids->size() - 1)) {
-        Serial.println(F("The provided index was not in range"));
         return;
       }
 
@@ -699,117 +982,36 @@ void CommandLine::runCommand(String input) {
       Serial.println(STOPSCAN_CMD);
       wifi_scan_obj.StartScan(WIFI_SCAN_AP_STA, TFT_MAGENTA);
     }
-    else if (cmd_args.get(0) == SCANAP_CMD) {
-      int full_sw = -1;
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-
-      if (full_sw == -1) {
-        Serial.print(F("Starting AP scan. Stop with "));
-        Serial.println(STOPSCAN_CMD);
-        wifi_scan_obj.StartScan(WIFI_SCAN_TARGET_AP, TFT_MAGENTA);
-      }
-      else {
-        Serial.print(F("Starting Full AP scan. Stop with "));
-        Serial.println(STOPSCAN_CMD);
-        wifi_scan_obj.StartScan(WIFI_SCAN_TARGET_AP_FULL, TFT_MAGENTA);
-      }
-    }
     // Raw sniff
-    else if (cmd_args.get(0) == SNIFF_RAW_CMD) {
+    else if (cmd_args.get(0) == SNIFF_RAW_CMD)
       this->startScanFromCLI(WIFI_SCAN_RAW_CAPTURE, TFT_WHITE, "Raw sniff");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_RAW_CAPTURE, TFT_WHITE);*/
-    }
-    // Scan stations
-    else if (cmd_args.get(0) == SCANSTA_CMD) {    
-      if(access_points->size() < 1)
-        Serial.print(F("The AP list is empty. Scan APs first with "));
-        Serial.println(SCANAP_CMD);  
-
-      this->startScanFromCLI(WIFI_SCAN_STATION, TFT_ORANGE, "Station scan");
-      /*Serial.println(STOPSCAN_CMD);  
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_STATION, TFT_ORANGE);*/
-    }
     // Beacon sniff
     else if (cmd_args.get(0) == SNIFF_BEACON_CMD) {
       this->startScanFromCLI(WIFI_SCAN_AP, TFT_MAGENTA, "Beacon sniff");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_AP, TFT_MAGENTA);*/
     }
     // SAE sniff
     else if (cmd_args.get(0) == SNIFF_SAE_CMD) {
       this->startScanFromCLI(WIFI_SCAN_SAE_COMMIT, TFT_MAGENTA, "Commit sniff");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_SAE_COMMIT, TFT_MAGENTA);*/
     }
     // Probe sniff
     else if (cmd_args.get(0) == SNIFF_PROBE_CMD) {
       this->startScanFromCLI(WIFI_SCAN_PROBE, TFT_MAGENTA, "Probe sniff");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_PROBE, TFT_MAGENTA);*/
     }
     // Deauth sniff
     else if (cmd_args.get(0) == SNIFF_DEAUTH_CMD) {
       this->startScanFromCLI(WIFI_SCAN_DEAUTH, TFT_RED, "Deauth sniff");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_DEAUTH, TFT_RED);*/
     }
     // Pwn sniff
     else if (cmd_args.get(0) == SNIFF_PWN_CMD) {
       this->startScanFromCLI(WIFI_SCAN_PWN, TFT_MAGENTA, "Pwnagotchi sniff");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_PWN, TFT_MAGENTA);*/
     }
     // PineScan sniff
     else if (cmd_args.get(0) == SNIFF_PINESCAN_CMD) {
       this->startScanFromCLI(WIFI_SCAN_PINESCAN, TFT_MAGENTA, "Pinescan sniff");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_PINESCAN, TFT_MAGENTA);*/
     }
     // MultiSSID sniff
     else if (cmd_args.get(0) == SNIFF_MULTISSID_CMD) {
       this->startScanFromCLI(WIFI_SCAN_MULTISSID, TFT_MAGENTA, "MultiSSID sniff");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_SCAN_MULTISSID, TFT_MAGENTA);*/
     }
     // PMKID sniff
     else if (cmd_args.get(0) == SNIFF_PMKID_CMD) {
@@ -881,14 +1083,12 @@ void CommandLine::runCommand(String input) {
       int ap_sw = this->argSearch(&cmd_args, "-a"); // APs
       
       if (ap_sw == -1) {
-        Serial.println(F("You did not provide a target index"));
         return;
       }
 
       int ap_index = cmd_args.get(ap_sw + 1).toInt();
 
       if ((ap_index < 0) || (ap_index > access_points->size() - 1)) {
-        Serial.println(F("The provided index was not in range"));
         return;
       }
       
@@ -906,15 +1106,12 @@ void CommandLine::runCommand(String input) {
 	  else if (cmd_args.get(0) == MAC_CMD_D) {
       int cl_sw = this->argSearch(&cmd_args, "-s"); // Stations
             
-      if (cl_sw == -1) {
-        Serial.println(F("You did not provide a target index"));
+      if (cl_sw == -1)
         return;
-      }
 
       int sta_index = cmd_args.get(cl_sw + 1).toInt();
 
       if ((sta_index < 0) || (sta_index > stations->size() - 1)) {
-        Serial.println(F("The provided index was not in range"));
         return;
       }
 
@@ -941,10 +1138,8 @@ void CommandLine::runCommand(String input) {
       int dst_addr_sw = this->argSearch(&cmd_args, "-d");
       int targ_sw = this->argSearch(&cmd_args, "-c");
   
-      if (attack_type_switch == -1) {
-        Serial.println(F("You must specify an attack type"));
+      if (attack_type_switch == -1)
         return;
-      }
       else {
         String attack_type = cmd_args.get(attack_type_switch + 1);
   
@@ -1076,9 +1271,6 @@ void CommandLine::runCommand(String input) {
             Serial.println("Starting Targeted AP Beacon spam. Stop with " + (String)STOPSCAN_CMD);
             wifi_scan_obj.StartScan(WIFI_ATTACK_AP_SPAM, TFT_MAGENTA);
           }
-          else {
-            Serial.println("You did not specify a beacon attack type");
-          }
         }
         else if (attack_type == ATTACK_TYPE_PROBE) {
           if (!wifi_scan_obj.filterActive()) {
@@ -1086,60 +1278,23 @@ void CommandLine::runCommand(String input) {
             return;
           }
           this->startScanFromCLI(WIFI_ATTACK_AUTH, TFT_RED, "Probe spam");
-          /*Serial.println(STOPSCAN_CMD);
-          #ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          wifi_scan_obj.StartScan(WIFI_ATTACK_AUTH, TFT_RED);*/
         }
         else if (attack_type == ATTACK_TYPE_RR) {
           this->startScanFromCLI(WIFI_ATTACK_RICK_ROLL, TFT_YELLOW, "Rick Roll Beacon spam");
-          /*Serial.println(STOPSCAN_CMD);
-          #ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          wifi_scan_obj.StartScan(WIFI_ATTACK_RICK_ROLL, TFT_YELLOW);*/
         }
         else if (attack_type == ATTACK_TYPE_FUNNY) {
           this->startScanFromCLI(WIFI_ATTACK_FUNNY_BEACON, TFT_CYAN, "Funny SSID Beacon spam");
-          /*Serial.println(STOPSCAN_CMD);
-          #ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          wifi_scan_obj.StartScan(WIFI_ATTACK_FUNNY_BEACON, TFT_CYAN);*/
         }
         else if (attack_type == ATTACK_TYPE_SAE) {
           this->startScanFromCLI(WIFI_ATTACK_SAE_COMMIT, TFT_CYAN, "SAE Commit spam");
-          /*Serial.println(STOPSCAN_CMD);
-          #ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          wifi_scan_obj.StartScan(WIFI_ATTACK_SAE_COMMIT, TFT_CYAN);*/
         }
         else if (attack_type == ATTACK_TYPE_CSA) {
           this->startScanFromCLI(WIFI_ATTACK_CSA, TFT_CYAN, "Channel Switch Announcement attack");
-          /*Serial.println(STOPSCAN_CMD);
-          #ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          wifi_scan_obj.StartScan(WIFI_ATTACK_CSA, TFT_CYAN);*/
         }
         else if (attack_type == ATTACK_TYPE_QUIET) {
           this->startScanFromCLI(WIFI_ATTACK_QUIET, TFT_CYAN, "Quite Time attack");
-          /*Serial.println(STOPSCAN_CMD);
-          #ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          wifi_scan_obj.StartScan(WIFI_ATTACK_QUIET, TFT_CYAN);*/
         }
         else {
-          Serial.println(F("Attack type not properly defined"));
           return;
         }
       }
@@ -1160,50 +1315,20 @@ void CommandLine::runCommand(String input) {
           // Airtag sniff
           if (bt_type == "airtag") {
             this->startScanFromCLI(BT_SCAN_AIRTAG, TFT_WHITE, "Airtag sniff");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_SCAN_AIRTAG, TFT_WHITE);*/
           }
           else if (bt_type == "flipper") {
             this->startScanFromCLI(BT_SCAN_FLIPPER, TFT_ORANGE, "Flipper sniff");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_SCAN_FLIPPER, TFT_ORANGE);*/
           }
           else if (bt_type == "flock") {
             this->startScanFromCLI(BT_SCAN_FLOCK, TFT_ORANGE, "Flock sniff");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_SCAN_FLOCK, TFT_ORANGE);*/
           }
           else if (bt_type == "meta") {
             this->startScanFromCLI(BT_SCAN_RAYBAN, TFT_ORANGE, "Meta sniff");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_SCAN_RAYBAN, TFT_ORANGE);*/
           }
         }
         // General bluetooth sniff
         else {
           this->startScanFromCLI(BT_SCAN_ALL, TFT_GREEN, "Bluetooth scan");
-          /*Serial.println(STOPSCAN_CMD);
-          #ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          wifi_scan_obj.StartScan(BT_SCAN_ALL, TFT_GREEN);*/
         }
       #else
         Serial.println(F("Bluetooth not supported"));
@@ -1224,142 +1349,84 @@ void CommandLine::runCommand(String input) {
               airtags->set(i, at);
             }
             this->startScanFromCLI(BT_SPOOF_AIRTAG, TFT_WHITE, "Spoofing Airtag");
-            /*#ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_SPOOF_AIRTAG, TFT_WHITE);*/
           }
           else {
-            Serial.print(F("Provided index is out of range: "));
-            Serial.println(target_mac);
             return;
           }
         #endif
       }
+    }
+    else if (cmd_args.get(0) == BT_FINDMY_CMD) {
+      #ifdef HAS_NIMBLE_2
+      int index_sw = this->argSearch(&cmd_args, "-t");
+
+      if (index_sw != -1) {
+        int targ_index = cmd_args.get(index_sw + 1).toInt();
+        if (targ_index < airtags->size()) {
+          for (int x = 0; x < airtags->size(); x++) {
+            AirTag new_atx = airtags->get(x);
+            if (x != targ_index)
+              new_atx.selected = false;
+            else
+              new_atx.selected = true;
+            airtags->set(x, new_atx);
+          }
+
+          wifi_scan_obj.executeFindMySound(false);
+        }
+      }
+      #endif
     }
     else if (cmd_args.get(0) == BT_SPAM_CMD) {
       int bt_type_sw = this->argSearch(&cmd_args, "-t");
       if (bt_type_sw != -1) {
         String bt_type = cmd_args.get(bt_type_sw + 1);
 
-        if (bt_type == "apple") {
-          #ifdef HAS_BT
-            this->startScanFromCLI(BT_ATTACK_SOUR_APPLE, TFT_GREEN, "Sour Apple attack");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
+        #ifdef HAS_BT
+          if (bt_type == "sourapple") {
+            #ifdef HAS_BT
+              this->startScanFromCLI(BT_ATTACK_SOUR_APPLE, TFT_GREEN, "Sour Apple attack");
             #endif
-            wifi_scan_obj.StartScan(BT_ATTACK_SOUR_APPLE, TFT_GREEN);*/
-          #else
-            Serial.println(F("Bluetooth not supported"));
-          #endif
-        }
-        else if (bt_type == "windows") {
-          #ifdef HAS_BT
-            this->startScanFromCLI(BT_ATTACK_SWIFTPAIR_SPAM, TFT_CYAN, "Swiftpair Spam attack");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_ATTACK_SWIFTPAIR_SPAM, TFT_CYAN);*/
-          #else
-            Serial.println(F("Bluetooth not supported"));
-          #endif
-        }
-        else if (bt_type == "samsung") {
-          #ifdef HAS_BT
-            this->startScanFromCLI(BT_ATTACK_SAMSUNG_SPAM, TFT_CYAN, "Samsung Spam attack");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_ATTACK_SAMSUNG_SPAM, TFT_CYAN);*/
-          #else
-            Serial.println(F("Bluetooth not supported"));
-          #endif
-        }
-        else if (bt_type == "google") {
-          #ifdef HAS_BT
-            this->startScanFromCLI(BT_ATTACK_GOOGLE_SPAM, TFT_CYAN, "Google Spam attack");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_ATTACK_GOOGLE_SPAM, TFT_CYAN);*/
-          #else
-            Serial.println(F("Bluetooth not supported"));
-          #endif
-        }
-        else if (bt_type == "flipper") {
-          #ifdef HAS_BT
-            this->startScanFromCLI(BT_ATTACK_FLIPPER_SPAM, TFT_ORANGE, "Flipper Spam attack");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_ATTACK_FLIPPER_SPAM, TFT_ORANGE);*/
-          #else
-            Serial.println(F("Bluetooth not supported"));
-          #endif
-        }
-        else if (bt_type == "all") {
-          #ifdef HAS_BT
-            this->startScanFromCLI(BT_ATTACK_SPAM_ALL, TFT_MAGENTA, "BT Spam All attack");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_ATTACK_SPAM_ALL, TFT_MAGENTA);*/
-          #else
-            Serial.println(F("Bluetooth not supported"));
-          #endif
-        }
-        else {
-          Serial.println(F("You did not specify a correct spam type"));
-        }
-      }
-    }
-    // Wardrive
-    else if (cmd_args.get(0) == BT_WARDRIVE_CMD) {
-      #ifdef HAS_BT
-        #ifdef HAS_GPS
-          if (gps_obj.getGpsModuleStatus()) {
-
-            this->startScanFromCLI(BT_SCAN_WAR_DRIVE, TFT_GREEN, "BT Wardrive");
-            /*Serial.println(STOPSCAN_CMD);
-            #ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(BT_SCAN_WAR_DRIVE, TFT_GREEN);*/
           }
-          else
-            Serial.println(F("GPS Module not detected"));
+          else if (bt_type == "applejuice") {
+            #ifdef HAS_BT
+              this->startScanFromCLI(BT_ATTACK_APPLE_JUICE, TFT_GREEN, "Apple Juice attack");
+            #endif
+          }
+          else if (bt_type == "windows") {
+            #ifdef HAS_BT
+              this->startScanFromCLI(BT_ATTACK_SWIFTPAIR_SPAM, TFT_CYAN, "Swiftpair Spam attack");
+            #endif
+          }
+          else if (bt_type == "samsung") {
+            #ifdef HAS_BT
+              this->startScanFromCLI(BT_ATTACK_SAMSUNG_SPAM, TFT_CYAN, "Samsung Spam attack");
+            #endif
+          }
+          else if (bt_type == "google") {
+            #ifdef HAS_BT
+              this->startScanFromCLI(BT_ATTACK_GOOGLE_SPAM, TFT_CYAN, "Google Spam attack");
+            #endif
+          }
+          else if (bt_type == "flipper") {
+            #ifdef HAS_BT
+              this->startScanFromCLI(BT_ATTACK_FLIPPER_SPAM, TFT_ORANGE, "Flipper Spam attack");
+            #endif
+          }
+          else if (bt_type == "all") {
+            #ifdef HAS_BT
+              this->startScanFromCLI(BT_ATTACK_SPAM_ALL, TFT_MAGENTA, "BT Spam All attack");
+            #endif
+          }
         #else
-          Serial.println(F("GPS not supported"));
+          Serial.println(F("Bluetooth not supported"));
         #endif
-      #else
-        Serial.println(F("Bluetooth not supported"));
-      #endif
-      
+      }
     }
     // Bluetooth CC Skimmer scan
     else if (cmd_args.get(0) == BT_SKIM_CMD) {
       #ifdef HAS_BT
         this->startScanFromCLI(BT_SCAN_SKIMMERS, TFT_MAGENTA, "Bluetooth CC Skimmer scan");
-        /*Serial.println(STOPSCAN_CMD);
-        #ifdef HAS_SCREEN
-          display_obj.clearScreen();
-          menu_function_obj.drawStatusBar();
-        #endif
-        wifi_scan_obj.StartScan(BT_SCAN_SKIMMERS, TFT_MAGENTA);*/
       #else
         Serial.println(F("Bluetooth not supported"));
       #endif
@@ -1367,52 +1434,60 @@ void CommandLine::runCommand(String input) {
 
     // Brightness command
     else if (cmd_args.get(0) == BRIGHTNESS_CMD) {
-      int c_arg = this->argSearch(&cmd_args, "-c");
-      int s_arg = this->argSearch(&cmd_args, "-s");
-      if (c_arg != -1) {
-        brightnessCycle();
-      } else if (s_arg != -1) {
-        uint8_t lvl = cmd_args.get(s_arg + 1).toInt();
-        if (lvl < 10) {
-          extern void brightnessSave(uint8_t level);
-          brightnessSave(lvl);
-          Serial.print(F("[Brightness] Set to level "));
-          Serial.println(lvl);
+      #ifndef HAS_MINI_SCREEN
+        int c_arg = this->argSearch(&cmd_args, "-c");
+        int s_arg = this->argSearch(&cmd_args, "-s");
+        if (c_arg != -1) {
+          brightnessCycle();
+        } else if (s_arg != -1) {
+          uint8_t lvl = cmd_args.get(s_arg + 1).toInt();
+          if (lvl < 10) {
+            extern void brightnessSave(uint8_t level);
+            brightnessSave(lvl);
+            Serial.print(F("[Brightness] Set to level "));
+            Serial.println(lvl);
+          } else {
+            Serial.println(F("Level must be 0-9"));
+          }
         } else {
-          Serial.println(F("Level must be 0-9"));
+          Serial.print(F("[Brightness] Current level: "));
+          Serial.println(getBrightnessLevel());
         }
-      } else {
-        Serial.print(F("[Brightness] Current level: "));
-        Serial.println(getBrightnessLevel());
-      }
+      #endif
+    }
+
+    // Wardrive POI command
+    else if (cmd_args.get(0) == WARDRIVEPOI_CMD) {
+      if (wifi_scan_obj.currentScanMode == WIFI_SCAN_WAR_DRIVE ||
+          wifi_scan_obj.currentScanMode == WIFI_SCAN_STATION_WAR_DRIVE) {
+        if (cmd_args.size() > 1) {
+          // Join remaining args as label
+          String label = "";
+          for (int i = 1; i < cmd_args.size(); i++) {
+            if (i > 1) label += " ";
+            label += cmd_args.get(i);
+          }
+          wifi_scan_obj.tagPOI(label.c_str());
+        } else {
+          wifi_scan_obj.tagPOI(nullptr);
+        }
+      } 
+      //else {
+      //  Serial.println(F("No active wardrive. Start wardrive first."));
+      //}
     }
 
     // Update command
     if (cmd_args.get(0) == UPDATE_CMD) {
-      //int w_sw = this->argSearch(&cmd_args, "-w"); // Web update
       int sd_sw = this->argSearch(&cmd_args, "-s"); // SD Update
-
-      // Update via OTA
-      //if (w_sw != -1) {
-      //  Serial.println("Starting Marauder OTA Update. Stop with " + (String)STOPSCAN_CMD);
-      //  wifi_scan_obj.currentScanMode = OTA_UPDATE;
-        //#ifdef HAS_SCREEN
-        //  menu_function_obj.changeMenu(menu_function_obj.updateMenu);
-        //#endif
-      //  web_obj.setupOTAupdate();
-      //}
-      // Update via SD
       if (sd_sw != -1) {
         #ifdef HAS_SD
           if (!sd_obj.supported) {
-            Serial.println(F("SD card is not connected. Cannot perform SD Update"));
+            Serial.println(F("SD card is not connected."));
             return;
           }
           wifi_scan_obj.currentScanMode = OTA_UPDATE;
           sd_obj.runUpdate();
-        #else
-          Serial.println(F("SD card support disabled. Cannot perform SD Update"));
-          return;
         #endif
       }
     }
@@ -1422,24 +1497,12 @@ void CommandLine::runCommand(String input) {
     // Ping Scan
     if (cmd_args.get(0) == PING_CMD) {
       this->startScanFromCLI(WIFI_PING_SCAN, TFT_GREEN, "Ping Scan");
-      /*Serial.println(STOPSCAN_CMD);
-      #ifdef HAS_SCREEN
-        display_obj.clearScreen();
-        menu_function_obj.drawStatusBar();
-      #endif
-      wifi_scan_obj.StartScan(WIFI_PING_SCAN, TFT_GREEN);*/
     }
 
+    // ARP discovery uses the active station netif on both legacy and C5
+    // dual-band hardware.
     if (cmd_args.get(0) == ARP_SCAN_CMD) {
-      #ifndef HAS_DUAL_BAND
-        this->startScanFromCLI(WIFI_ARP_SCAN, TFT_CYAN, "ARP Scan");
-        /*Serial.println(STOPSCAN_CMD);
-        #ifdef HAS_SCREEN
-          display_obj.clearScreen();
-          menu_function_obj.drawStatusBar();
-        #endif
-        wifi_scan_obj.StartScan(WIFI_ARP_SCAN, TFT_CYAN);*/
-      #endif
+      this->startScanFromCLI(WIFI_ARP_SCAN, TFT_CYAN, "ARP Scan");
     }
 
     // GPS POI
@@ -1486,9 +1549,6 @@ void CommandLine::runCommand(String input) {
             menu_function_obj.changeMenu(menu_function_obj.gpsPOIMenu.parentMenu);
           #endif
         }
-      #else
-        Serial.println(F("Your hardware doesn't have GPS, silly"));
-        return;
       #endif
     }
 
@@ -1508,16 +1568,11 @@ void CommandLine::runCommand(String input) {
           // Full port scan
           if (all_sw != -1) {
             wifi_scan_obj.current_scan_ip = ipList->get(ip_index);
-            this->startScanFromCLI(WIFI_PORT_SCAN_ALL, TFT_BLUE, "Selected: " + ipList->get(ip_index).toString());
-            /*#ifdef HAS_SCREEN
-              display_obj.clearScreen();
-              menu_function_obj.drawStatusBar();
-            #endif
-            wifi_scan_obj.StartScan(WIFI_PORT_SCAN_ALL, TFT_BLUE);*/
+            String msg = "Selected: " + ipList->get(ip_index).toString();
+            this->startScanFromCLI(WIFI_PORT_SCAN_ALL, TFT_BLUE, msg.c_str());
           }
         }
         else {
-          Serial.println(F("The IP index specified is out of range"));
           return;
         }
       }
@@ -1542,20 +1597,7 @@ void CommandLine::runCommand(String input) {
 
         if (target_mode != 0) {
           this->startScanFromCLI(target_mode, TFT_CYAN, "port scan");
-          /*#ifdef HAS_SCREEN
-            display_obj.clearScreen();
-            menu_function_obj.drawStatusBar();
-          #endif
-          wifi_scan_obj.StartScan(target_mode, TFT_CYAN);*/
         }
-        else {
-          Serial.println(F("You did not specify a supported service"));
-          return;
-        }
-      }
-      else {
-        Serial.println(F("You did not specify an IP index"));
-        return;
       }
     }
   }
@@ -1571,18 +1613,42 @@ void CommandLine::runCommand(String input) {
     int at_sw = this->argSearch(&cmd_args, "-t");
     int ip_sw = this->argSearch(&cmd_args, "-i");
     int pr_sw = this->argSearch(&cmd_args, "-p");
+    int bt_sw = this->argSearch(&cmd_args, "-b");
+    int fl_sw = this->argSearch(&cmd_args, "-f");
+    int pn_sw = this->argSearch(&cmd_args, "-x");
+    int ms_sw = this->argSearch(&cmd_args, "-m");
 
     // List APs
     if (ap_sw != -1) {
       for (int i = 0; i < access_points->size(); i++) {
-        if (access_points->get(i).selected) {
-          Serial.println("[" + (String)i + "][CH:" + (String)access_points->get(i).channel + "] " + access_points->get(i).essid + " " + (String)access_points->get(i).rssi + " (selected)");
+        AccessPoint access_point = access_points->get(i);
+        if (access_point.selected) {
+          Serial.println("[" + (String)i + "][CH:" + (String)access_point.channel + "] " + access_point.essid + " " + (String)access_point.rssi + " (selected)");
           count_selected += 1;
         } 
         else
-          Serial.println("[" + (String)i + "][CH:" + (String)access_points->get(i).channel + "] " + access_points->get(i).essid + " " + (String)access_points->get(i).rssi);
+          Serial.println("[" + (String)i + "][CH:" + (String)access_point.channel + "] " + access_point.essid + " " + (String)access_point.rssi);
       }
       this->showCounts(count_selected);
+    }
+    else if (bt_sw != -1) {
+      for (int i = 0; i < ble_devices->size(); i++) {
+        BleDevice ble_device = ble_devices->get(i);
+        Serial.println("[" + (String)i + "][RSSI:" + (String)ble_device.rssi + "] " + ble_device.name);
+      }
+    }
+    else if (fl_sw != -1) {
+      for (int i = 0; i < flippers->size(); i++) {
+        Serial.println("[" + (String)i + "]MAC: " + flippers->get(i).mac + " " + flippers->get(i).name);
+      }
+    }
+    else if (pn_sw != -1) {
+      for (size_t i = 0; i < wifi_scan_obj.getPineScanCount(); i++)
+        Serial.println("[" + (String)i + "] " + wifi_scan_obj.getPineScanLabel(i));
+    }
+    else if (ms_sw != -1) {
+      for (size_t i = 0; i < wifi_scan_obj.getMultiSSIDCount(); i++)
+        Serial.println("[" + (String)i + "] " + wifi_scan_obj.getMultiSSIDLabel(i));
     }
     // List IPs
     else if (ip_sw != -1) {
@@ -1612,17 +1678,19 @@ void CommandLine::runCommand(String input) {
     else if (cl_sw != -1) {
       char sta_mac[] = "00:00:00:00:00:00";
       for (int x = 0; x < access_points->size(); x++) {
-        Serial.println("[" + (String)x + "] " + access_points->get(x).essid + " " + (String)access_points->get(x).rssi + ":");
-        for (int i = 0; i < access_points->get(x).stations->size(); i++) {
-          wifi_scan_obj.getMAC(sta_mac, stations->get(access_points->get(x).stations->get(i)).mac, 0);
-          if (stations->get(access_points->get(x).stations->get(i)).selected) {
-            Serial.print("  [" + (String)access_points->get(x).stations->get(i) + "] ");
+        AccessPoint access_point = access_points->get(x);
+        Serial.println("[" + (String)x + "] " + access_point.essid + " " + (String)access_point.rssi + ":");
+        for (int i = 0; i < access_point.stations->size(); i++) {
+          Station station = stations->get(access_point.stations->get(i));
+          wifi_scan_obj.getMAC(sta_mac, station.mac, 0);
+          if (station.selected) {
+            Serial.print("  [" + (String)access_point.stations->get(i) + "] ");
             Serial.print(sta_mac);
             Serial.println(F(" (selected)"));
             count_selected += 1;
           }
           else {
-            Serial.print("  [" + (String)access_points->get(x).stations->get(i) + "] ");
+            Serial.print("  [" + (String)access_point.stations->get(i) + "] ");
             Serial.println(sta_mac);
           }
         }
@@ -1659,10 +1727,11 @@ void CommandLine::runCommand(String input) {
     if ((ap_sw != -1) && (pw_sw != -1)) {
       int index = cmd_args.get(ap_sw + 1).toInt();
       String password = cmd_args.get(pw_sw + 1);
-      Serial.println("Using SSID: " + (String)access_points->get(index).essid + " Password: " + (String)password);
+      AccessPoint access_point = access_points->get(index);
+      Serial.println("Using SSID: " + (String)access_point.essid);
       //wifi_scan_obj.currentScanMode = LV_JOIN_WIFI;
       //wifi_scan_obj.StartScan(LV_JOIN_WIFI, TFT_YELLOW); 
-      wifi_scan_obj.joinWiFi(access_points->get(index).essid, password, false);
+      wifi_scan_obj.joinWiFi(access_point.essid, password, false);
       #ifdef HAS_SCREEN
         #ifdef HAS_MINI_KB
           menu_function_obj.changeMenu(menu_function_obj.current_menu);
@@ -1670,11 +1739,8 @@ void CommandLine::runCommand(String input) {
       #endif
     }
     else if (s_sw != -1) {
-      String ssid = settings_obj.loadSetting<String>("ClientSSID");
-      String pw = settings_obj.loadSetting<String>("ClientPW");
-
-      if ((ssid != "") && (pw != "")) {
-        wifi_scan_obj.joinWiFi(ssid, pw, false);
+      if (settings_obj.getSavedWifiCount() > 0) {
+        wifi_scan_obj.joinSavedWiFi(false);
         #ifdef HAS_SCREEN
           menu_function_obj.changeMenu(menu_function_obj.current_menu);
         #endif
@@ -1712,16 +1778,17 @@ void CommandLine::runCommand(String input) {
         // Select ALL APs
         if (cmd_args.get(ap_sw + 1) == "all") {
           for (int i = 0; i < access_points->size(); i++) {
-            if (access_points->get(i).selected) {
+            AccessPoint access_point = access_points->get(i);
+            if (access_point.selected) {
               // Unselect "selected" ap
-              AccessPoint new_ap = access_points->get(i);
+              AccessPoint new_ap = access_point;
               new_ap.selected = false;
               access_points->set(i, new_ap);
               count_unselected += 1;
             }
             else {
               // Select "unselected" ap
-              AccessPoint new_ap = access_points->get(i);
+              AccessPoint new_ap = access_point;
               new_ap.selected = true;
               access_points->set(i, new_ap);
               count_selected += 1;
@@ -1734,21 +1801,22 @@ void CommandLine::runCommand(String input) {
           // Mark APs as selected
           for (int i = 0; i < ap_index.size(); i++) {
             int index = ap_index.get(i).toInt();
+            AccessPoint access_point = access_points->get(index);
             if (!this->inRange(access_points->size(), index)) {
               Serial.print(F("Index not in range: "));
               Serial.println(index);
               continue;
             }
-            if (access_points->get(index).selected) {
+            if (access_point.selected) {
               // Unselect "selected" ap
-              AccessPoint new_ap = access_points->get(index);
+              AccessPoint new_ap = access_point;
               new_ap.selected = false;
               access_points->set(index, new_ap);
               count_unselected += 1;
             }
             else {
               // Select "unselected" ap
-              AccessPoint new_ap = access_points->get(index);
+              AccessPoint new_ap = access_point;
               new_ap.selected = true;
               access_points->set(index, new_ap);
               count_selected += 1;
@@ -1764,16 +1832,17 @@ void CommandLine::runCommand(String input) {
       // Select all Stations
       if (cmd_args.get(cl_sw + 1) == "all") {
         for (int i = 0; i < stations->size(); i++) {
-          if (stations->get(i).selected) {
+          Station station = stations->get(i);
+          if (station.selected) {
             // Unselect "selected" ap
-            Station new_sta = stations->get(i);
+            Station new_sta = station;
             new_sta.selected = false;
             stations->set(i, new_sta);
             count_unselected += 1;
           }
           else {
             // Select "unselected" ap
-            Station new_sta = stations->get(i);
+            Station new_sta = station;
             new_sta.selected = true;
             stations->set(i, new_sta);
             count_selected += 1;
@@ -1786,21 +1855,22 @@ void CommandLine::runCommand(String input) {
         // Mark Stations as selected
         for (int i = 0; i < sta_index.size(); i++) {
           int index = sta_index.get(i).toInt();
+          Station station = stations->get(index);
           if (!this->inRange(stations->size(), index)) {
             Serial.print(F("Index not in range: "));
             Serial.println(index);
             continue;
           }
-          if (stations->get(index).selected) {
+          if (station.selected) {
             // Unselect "selected" ap
-            Station new_sta = stations->get(index);
+            Station new_sta = station;
             new_sta.selected = false;
             stations->set(index, new_sta);
             count_unselected += 1;
           }
           else {
             // Select "unselected" ap
-            Station new_sta = stations->get(index);
+            Station new_sta = station;
             new_sta.selected = true;
             stations->set(index, new_sta);
             count_selected += 1;
@@ -1909,15 +1979,16 @@ void CommandLine::runCommand(String input) {
       uint8_t mac[6];
       if (sscanf(mac_str.c_str(), "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx",
              &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6) {
-        Serial.println(F("Invalid MAC address format: use XX:XX:XX:XX:XX:XX"));
+        Serial.println(F("Format must be XX:XX:XX:XX:XX:XX"));
         return;
       }
 
       // Duplicate check
       for (int i = 0; i < access_points->size(); i++) {
+        AccessPoint access_point = access_points->get(i);
         bool match = true;
         for (int x = 0; x < 6; x++) {
-          if (mac[x] != access_points->get(i).bssid[x]) {
+          if (mac[x] != access_point.bssid[x]) {
             match = false;
             break;
           }
@@ -1926,7 +1997,7 @@ void CommandLine::runCommand(String input) {
           Serial.print(F("AP already exists at ["));
           Serial.print(i);
           Serial.print(F("]: "));
-          Serial.println(access_points->get(i).essid);
+          Serial.println(access_point.essid);
           return;
         }
       }

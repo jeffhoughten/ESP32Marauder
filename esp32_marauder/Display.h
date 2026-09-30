@@ -13,6 +13,7 @@
 #include <SPI.h>
 #include "SPIFFS.h"
 #include "Assets.h"
+#include "BootSplash.h"
 
 #ifdef MARAUDER_SENSECAP
   #include <TFT_eSPI_shim.h>
@@ -20,8 +21,21 @@
   #include <TFT_eSPI.h>
 #endif
 
+// Reject board/display configuration mismatches at compile time. A mismatched
+// TFT setup can boot normally while driving the wrong controller and pins.
+#if defined(MARAUDER_CYD_3_5_INCH) && !defined(ST7796_DRIVER)
+  #error "MARAUDER_CYD_3_5_INCH requires User_Setup_cyd_3_5_inch.h (ST7796_DRIVER)"
+#endif
+#if (defined(MARAUDER_CARDPUTER) || defined(MARAUDER_CARDPUTER_ADV)) && !defined(ST7789_2_DRIVER)
+  #error "Cardputer targets require their ST7789_2_DRIVER TFT_eSPI setup"
+#endif
+
 #ifdef HAS_CYD_TOUCH
   #include <XPT2046_Touchscreen.h>
+#endif
+
+#ifdef HAS_CAP_TOUCH
+  #include "ft6336.h"
 #endif
 
 // WiFi stuff
@@ -131,8 +145,6 @@ class Display
     int8_t menuButton(uint16_t *x, uint16_t *y, bool pressed, bool check_hold = false);
     uint8_t updateTouch(uint16_t *x, uint16_t *y, uint16_t threshold = 600);
     bool isTouchHeld(uint16_t threshold = 600);
-    void tftDrawRedOnOffButton();
-    void tftDrawGreenOnOffButton();
     void tftDrawGraphObjects(byte x_scale);
     void tftDrawEapolColorKey(bool filter = false);
     void tftDrawColorKey();
@@ -144,17 +156,11 @@ class Display
     void buildBanner(String msg, int xpos);
     void clearScreen();
     void displayBuffer(bool do_clear = false);
-    //void drawJpeg(const char *filename, int xpos, int ypos);
+    void drawBootSplash();
     void getTouchWhileFunction(bool pressed);
-    //void initScrollValues(bool tte = false);
-    //void jpegInfo();
-    //void jpegRender(int xpos, int ypos);
     void init();
     void RunSetup();
-    //void scrollAddress(uint16_t vsp);
-    //int scroll_line(uint32_t color);
-    //void setupScrollArea(uint16_t tfa, uint16_t bfa);
-    void showCenterText(String text, int y);
+    void showCenterText(const char* text, int y, bool small_pp = false, uint8_t text_size = BANNER_TEXT_SIZE);
     void touchToExit();
     void twoPartDisplay(String center_text);
     void updateBanner(String msg);

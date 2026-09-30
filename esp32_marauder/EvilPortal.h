@@ -69,6 +69,7 @@ struct AccessPoint {
   bool has_msg_2;
   bool has_msg_3;
   bool has_msg_4;
+  uint32_t last_seen_ms;
 };
 
 class CaptiveRequestHandler : public AsyncWebHandler {
@@ -107,8 +108,6 @@ class EvilPortal {
     void sendToDisplay(String msg);
 
   public:
-    EvilPortal();
-
     int ap_index = -1;
 
     String target_html_name = "index.html";
@@ -123,6 +122,7 @@ class EvilPortal {
     String get_user_name();
     String get_password();
     bool setAP(String essid);
+    bool setAPFromConfig();
     void setup();
     bool begin(LinkedList<ssid>* ssids, LinkedList<AccessPoint>* access_points);
     void main(uint8_t scan_mode);

@@ -5,7 +5,7 @@
 
 #include "configs.h"
 
-#ifdef MARAUDER_CARDPUTER
+#if defined(MARAUDER_CARDPUTER) || defined(MARAUDER_CARDPUTER_ADV)
   #include "Keyboard.h"
 #endif
 
@@ -18,9 +18,12 @@
 #define BATTERY_ANALOG_ON 0
 
 #include "WiFiScan.h"
+#include "ReconMission.h"
+#include "TargetListSort.h"
 #include "BatteryInterface.h"
 #include "SDInterface.h"
 #include "settings.h"
+#include "MenuInputRepeat.h"
 
 #ifdef HAS_BUTTONS
   #include "Switches.h"
@@ -42,8 +45,11 @@
 #endif
 
 extern WiFiScan wifi_scan_obj;
+extern ReconMission recon_obj;
 extern SDInterface sd_obj;
+// #ifdef HAS_BATTERY
 extern BatteryInterface battery_obj;
+// #endif
 extern Settings settings_obj;
 
 #define FLASH_BUTTON 0
@@ -98,6 +104,8 @@ extern Settings settings_obj;
 #define FORCE 39
 #define FUNNY_BEACON 40
 #define FLOCK 41
+#define BRIGHTNESS 42
+#define SETTINGS 43
 
 struct Menu;
 
@@ -108,7 +116,6 @@ struct MenuNode {
   bool command;
   uint8_t color;
   uint8_t icon;
-  TFT_eSPI_Button* button;
   bool selected;
   std::function<void()> callable;
 };
@@ -126,6 +133,19 @@ class MenuFunctions
 {
   private:
 
+    enum class FoxHuntListKind : uint8_t {
+      AP_TARGETS,
+      APS_WITH_STATIONS,
+      STATION_TARGETS,
+      PINEAPPLE_TARGETS,
+      MULTISSID_TARGETS,
+      BLE_TARGETS,
+      FINDMY_TARGETS,
+      FLIPPER_TARGETS,
+      META_TARGETS,
+      FLOCK_TARGETS,
+    };
+
     String u_result = "";
 
 
@@ -135,9 +155,33 @@ class MenuFunctions
     uint8_t mini_kb_index = 0;
     uint8_t old_gps_sat_count = 0;
     uint8_t max_graph_value = 0;
+    Menu* marquee_menu = nullptr;
+    uint16_t marquee_selected = 0xFFFF;
+    uint16_t marquee_rendered_offset = 0;
+    uint16_t marquee_max_offset = 0;
+    uint32_t marquee_selected_since = 0;
+    MenuInputRepeat menu_up_repeat;
+    MenuInputRepeat menu_down_repeat;
+    int8_t menu_touch_button = -1;
+
+    void buildWiFiFoxHuntMenu();
+    void buildBluetoothFoxHuntMenu();
+    void buildFoxTargetList(FoxHuntListKind type, int context_ap = -1);
+    void buildFoxSortMenu();
+    void buildFoxFilterMenu();
+    const char* foxSortLabel() const;
+    const char* foxFilterLabel() const;
+    bool foxListSupportsRecent() const;
+    bool foxListSupportsBand() const;
+
+    FoxHuntListKind fox_target_list = FoxHuntListKind::AP_TARGETS;
+    int fox_target_context_ap = -1;
+    TargetSortMode fox_sort_mode = TargetSortMode::SIGNAL_DESC;
+    TargetFilterMode fox_filter_mode = TargetFilterMode::ALL;
 
     // Main menu stuff
     Menu mainMenu;
+    Menu reconMenu;
 
     Menu wifiMenu;
     Menu bluetoothMenu;
@@ -154,18 +198,35 @@ class MenuFunctions
     Menu updateMenu;
     Menu settingsMenu;
     Menu specSettingMenu;
+    Menu geofenceMenu;
+    Menu geofenceActionMenu;
+    #ifdef HAS_MINI_SCREEN
+      Menu geofenceRadiusMenu;
+      GeofenceConfig pendingGeofence;
+      uint8_t pendingGeofenceSlot = 0;
+      bool geofenceMenuRefreshPending = false;
+    #endif
+    uint8_t selectedGeofence = 0;
     //Menu languageMenu;
     Menu sdDeleteMenu;
+    LinkedList<SDDirectoryEntry>* sd_browser_entries = nullptr;
+    LinkedList<String>* sd_delete_selection = nullptr;
+    String sd_browser_path = "/";
+    bool sd_browser_release_pending = false;
+    bool saved_wifi_release_pending = false;
+    void ensureSDDeleteBrowserResources();
+    void releaseSDDeleteBrowserResources();
 
     // WiFi menu stuff
     Menu wifiSnifferMenu;
     Menu wifiScannerMenu;
     Menu wifiAttackMenu;
-    #ifdef HAS_GPS
+    /*#ifdef HAS_GPS
       Menu wardrivingMenu;
-    #endif
+    #endif*/
     Menu wifiGeneralMenu;
     Menu wifiAPMenu;
+    Menu savedWifiMenu;
     Menu wifiIPMenu;
     Menu ssidsMenu;
     //#ifdef HAS_BT
@@ -193,12 +254,37 @@ class MenuFunctions
 
     Menu evilPortalMenu;
 
+    Menu foxHuntMenu;
+    Menu foxSortMenu;
+    Menu foxFilterMenu;
+
+    #ifdef HAS_DIRECT_UPLOAD
+      Menu deleteAllMenu;
+      Menu uploadAllMenu;
+    #endif
+
     //static void lv_tick_handler();
 
     // Menu icons
 
+    void buildUploadFileMenu();
     void setupSDFileList(bool update = false);
     void buildSDFileMenu(bool update = false);
+    void buildSavedWifiMenu(bool replace_mode = false);
+    void buildGeofenceMenu();
+    void buildGeofenceActionMenu(uint8_t slot);
+    String geofenceTextInput(const char* title);
+    bool editGeofence(uint8_t slot, bool use_current_location);
+    #ifdef HAS_MINI_SCREEN
+      void beginMiniGeofenceEdit(uint8_t slot, bool use_current_location);
+      void buildGeofenceRadiusMenu(uint8_t slot, const GeofenceConfig& fence);
+      void deferGeofenceMenuRefresh();
+    #endif
+    void releaseSavedWifiMenu();
+    void buildSDDeleteBrowser(const String& path, bool reset_selection = false);
+    void toggleSDDeleteSelection(const String& path);
+    bool isSDFileSelected(const String& path) const;
+    String parentSDPath(const String& path) const;
     void displayMenuButtons();
     uint16_t getColor(uint16_t color);
     void drawAvgLine(int16_t value);
@@ -215,23 +301,28 @@ class MenuFunctions
     void drawGraph(int16_t *values);
     void drawGraphSmall(uint8_t *values);
     void renderGraphUI(uint8_t scan_mode = 0);
-    //void addNodes(Menu* menu, String name, uint16_t color, Menu* child, int place, std::function<void()> callable, bool selected = false, String command = "");
-    void addNodes(Menu* menu, String name, uint8_t color, Menu* child, int place, std::function<void()> callable, bool selected = false, String command = "");
+    void addNodes(Menu* menu, const char* name, uint8_t color, int place, std::function<void()> callable, bool selected = false);
     void battery(bool initial = false);
     void battery2(bool initial = false);
-    String callSetting(String key);
-    void runBoolSetting(String ley);
-    void displaySetting(String key, Menu* menu, int index);
-    void buttonSelected(int b, int x = -1);
+    const char* callSetting(const char* key);
+    void displaySetting(const char* key, Menu* menu, int index);
+    void buttonSelected(int b, int x = -1, uint16_t text_offset = 0);
     void buttonNotSelected(int b, int x = -1);
+    String menuLabelWindow(const String& name, uint16_t offset = 0);
+    uint16_t menuLabelMaxOffset(const String& name);
+    void updateMenuMarquee(uint32_t current_time);
+    #ifdef HAS_MINI_SCREEN
+      void drawMiniMenuButton(int b, int x, bool selected, uint16_t text_offset = 0);
+    #endif
     //#if (!defined(HAS_ILI9341) && defined(HAS_BUTTONS))
     #ifdef HAS_MINI_KB
       String miniKeyboard(Menu * targetMenu, bool do_pass = false);
     #endif
     //#endif
 
-    #ifdef MARAUDER_CARDPUTER
+    #if defined(MARAUDER_CARDPUTER) || defined(MARAUDER_CARDPUTER_ADV)
       Keyboard_Class M5CardputerKeyboard = Keyboard_Class();
+      void updateKeyboard();
       bool isKeyPressed(char c);
     #endif
 
@@ -257,6 +348,11 @@ class MenuFunctions
     Menu infoMenu;
     Menu apInfoMenu;
 
+    #ifdef HAS_DIRECT_UPLOAD
+      Menu uploadLogsMenu;
+      Menu actionMenu;
+    #endif
+
     //Ticker tick;
 
     uint16_t x = -1, y = -1;
@@ -268,11 +364,13 @@ class MenuFunctions
 
     void setGraphScale(float scale);
     void updateStatusBar();
-    void buildButtons(Menu* menu, int starting_index = 0, String button_name = "");
+    void buildButtons(Menu* menu, int starting_index = 0, const char* button_name = nullptr);
     void changeMenu(Menu* menu, bool simple_change = false);
     void drawStatusBar();
     void displayCurrentMenu(int start_index = 0);
-    void brightnessMode();
+    #ifndef HAS_MINI_SCREEN
+      void brightnessMode();
+    #endif
     void main(uint32_t currentTime);
     void RunSetup();
     void orientDisplay();
@@ -281,4 +379,5 @@ class MenuFunctions
 
 #endif
 #endif
+
 
