@@ -353,6 +353,46 @@ public:
     drawCentreString(String(string), x, y, font);
   }
 
+  // Pixel width of a string in the current font/size
+  int16_t textWidth(const String& string, uint8_t font = 1) {
+    int16_t x1, y1;
+    uint16_t w, h;
+    gfx->setTextSize(_text_size);
+    gfx->getTextBounds(string.c_str(), 0, 0, &x1, &y1, &w, &h);
+    return w;
+  }
+
+  int16_t textWidth(const char* string, uint8_t font = 1) {
+    return textWidth(String(string), font);
+  }
+
+  void drawRightString(const String& string, int32_t x, int32_t y, uint8_t font = 1) {
+    gfx->setCursor(x - textWidth(string, font), y);
+    gfx->setTextColor(_text_color, _text_bg_color);
+    gfx->print(string);
+    _cursor_x = gfx->getCursorX();
+    _cursor_y = gfx->getCursorY();
+  }
+
+  void drawRightString(const char* string, int32_t x, int32_t y, uint8_t font = 1) {
+    drawRightString(String(string), x, y, font);
+  }
+
+  // Bitmap font selection is not applicable on the Arduino_GFX backend
+  void setTextFont(uint8_t font) {}
+
+  void fillCircle(int32_t x, int32_t y, int32_t r, uint16_t color) {
+    gfx->fillCircle(x, y, r, color);
+  }
+
+  void drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color) {
+    gfx->drawRoundRect(x, y, w, h, r, color);
+  }
+
+  void fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color) {
+    gfx->fillRoundRect(x, y, w, h, r, color);
+  }
+
   // ---- Touch (replaced by SenseCAP touch stack) ----
   // These are stubs — actual touch is handled via touch.h
   uint8_t getTouch(uint16_t *x, uint16_t *y, uint16_t threshold = 600) {
