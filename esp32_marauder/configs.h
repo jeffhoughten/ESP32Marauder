@@ -644,8 +644,13 @@
     #define HAS_BT
     #define HAS_SCREEN
     #define HAS_FULL_SCREEN
-    #define HAS_SD
-    #define USE_SD
+    // SD is not wired to the ESP32 on this board — it's behind the RP2040
+    // companion MCU, accessed over a COBS-framed request/response protocol
+    // (Rp2040Bridge.h) rather than a mountable local SPI bus. HAS_SD stays
+    // off until there's a File-object-compatible driver that speaks that
+    // protocol; see Rp2040Bridge.h and the RP2040 firmware's PKT_SD_* ops.
+    //#define HAS_SD
+    //#define USE_SD
     #define HAS_PSRAM
     #define HAS_NIMBLE_2
     #define HAS_IDF_3
@@ -2963,9 +2968,17 @@
       #define GPS_TX 14
       #define GPS_RX 13
     #elif defined(MARAUDER_SENSECAP)
-      #define GPS_SERIAL_INDEX 1
-      #define GPS_TX 14
-      #define GPS_RX 13
+      // GPS is not wired to the ESP32 on this board. These are the
+      // ESP32-side pins of the inter-chip UART to the RP2040 companion MCU
+      // (which owns the real GPS module and relays it — see
+      // Rp2040Bridge.h), following this file's existing GPS_TX/GPS_RX
+      // convention of naming each pin after the device on the OTHER end's
+      // matching pin:
+      //   RP2040 GPIO16 = its UART0 TX -> here (acts as this ESP32's RX)
+      //   RP2040 GPIO17 = its UART0 RX <- here (acts as this ESP32's TX)
+      #define GPS_SERIAL_INDEX 2
+      #define GPS_TX 19
+      #define GPS_RX 20
     #endif
   #else
     #define mac_history_len 100

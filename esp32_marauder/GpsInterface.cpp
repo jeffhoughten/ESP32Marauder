@@ -2,6 +2,10 @@
 
 #ifdef HAS_GPS
 
+#ifdef MARAUDER_SENSECAP
+  #include "Rp2040Bridge.h"
+#endif
+
 extern GpsInterface gps_obj;
 
 char nmeaBuffer[100];
@@ -16,9 +20,60 @@ static const char *PCAS_SET_115200 = "$PCAS01,5*19\r\n";
 
 static const uint32_t PROBE_MS = 1200;
 
+#ifdef MARAUDER_SENSECAP
+// Set true the first time the RP2040 bridge reports a GPS module present,
+// or forwards a sentence — whichever comes first.
+static volatile bool bridge_gps_seen = false;
+
+static void bridge_on_gps_nmea(const char* sentence, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    nmea.process(sentence[i]);
+  }
+  // The RP2040 strips the CR/LF that terminated the sentence before
+  // forwarding it; feed one back so MicroNMEA treats it as complete.
+  nmea.process('\n');
+  bridge_gps_seen = true;
+}
+
+static void bridge_on_gps_status(bool present) {
+  if (present) bridge_gps_seen = true;
+}
+#endif
+
 void GpsInterface::begin() {
 
-  
+#ifdef MARAUDER_SENSECAP
+  // GPS is not wired to the ESP32 on this board. The RP2040 companion MCU
+  // owns the real GPS module on its own Grove UART and relays NMEA
+  // sentences over a COBS-framed link (see Rp2040Bridge.h) rather than
+  // raw serial text, so none of the direct-UART probing below applies.
+  bridge_gps_seen = false;
+  rp2040_bridge.begin();
+  rp2040_bridge.onGpsNmea(bridge_on_gps_nmea);
+  rp2040_bridge.onGpsStatus(bridge_on_gps_status);
+
+  // gps_enabled gates whether the GPS menu/Wardrive option get built in
+  // MenuFunctions::RunSetup(), which runs once right after this returns —
+  // so, as on every other board, we have to decide this synchronously
+  // here rather than updating it later once more data arrives.
+  uint32_t bridge_wait_start = millis();
+  while (millis() - bridge_wait_start < 2000) {
+    rp2040_bridge.poll();
+    if (bridge_gps_seen) break;
+    delay(5);
+  }
+
+  this->gps_enabled = bridge_gps_seen;
+  if (!this->gps_enabled) {
+    Serial.println(F("GPS Not Found (RP2040 bridge reported no GPS)"));
+  }
+
+  this->type_flag = GPSTYPE_NATIVE;
+  this->disable_queue();
+  nmea.setUnknownSentenceHandler(gps_nmea_notimp);
+  return;
+#endif
+
   Serial2.begin(9600, SERIAL_8N1, GPS_TX, GPS_RX);
 
   uint32_t gps_baud = this->initGpsBaudAndForce115200();
@@ -753,6 +808,14 @@ String GpsInterface::getNmeaNotparsed() {
 }
 
 void GpsInterface::main() {
+#ifdef MARAUDER_SENSECAP
+  rp2040_bridge.poll();
+  // If the bridge confirms GPS presence after begin()'s wait window gave
+  // up, reflect that here too — the GPS menu itself won't retroactively
+  // appear (see the comment in begin()), but getGpsModuleStatus() callers
+  // elsewhere (status bar, CLI, wardrive gating) will see it go true.
+  if (bridge_gps_seen && !this->gps_enabled) this->gps_enabled = true;
+#else
   while (Serial2.available()) {
     //Fetch the character one by one
     char c = Serial2.read();
@@ -760,6 +823,7 @@ void GpsInterface::main() {
     //Pass the character to the library
     nmea.process(c);
   }
+#endif
 
   uint8_t num_sat = nmea.getNumSatellites();
 
