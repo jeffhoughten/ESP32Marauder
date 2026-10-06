@@ -296,13 +296,25 @@ void Display::RunSetup() {
       SPI_MOSI,
       GFX_NOT_DEFINED);
 
+    // bounce_buffer_size_px (last arg) stages the LCD DMA's PSRAM reads
+    // through internal SRAM instead of hitting PSRAM directly on every
+    // pixel clock. This library uses a single framebuffer in PSRAM with
+    // no double-buffering support at all (confirmed against its source),
+    // so it can't eliminate tearing from the CPU writing mid-scanout --
+    // but it does reduce glitching caused by PSRAM bus contention (e.g.
+    // WiFi/BLE activity competing with the display's continuous DMA
+    // reads), which fits glitches being more frequent on busier screens.
+    // HOR_RES * 10 (10 scanlines) is the value ESP-IDF's own RGB panel
+    // examples commonly use as a starting point.
     static Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
       18, 17, 16, 21,
       4, 3, 2, 1, 0,
       10, 9, 8, 7, 6, 5,
       15, 14, 13, 12, 11,
       1, 10, 8, 50,
-      1, 10, 8, 20);
+      1, 10, 8, 20,
+      0, GFX_NOT_DEFINED, false,
+      0, 0, HOR_RES * 10);
 
     gfx = new Arduino_RGB_Display(
       HOR_RES, VER_RES, rgbpanel, 0, true,
