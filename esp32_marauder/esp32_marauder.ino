@@ -440,9 +440,6 @@ void loop()
 {
   currentTime = millis();
   bool mini = false;
-  #ifdef MARAUDER_SENSECAP
-    lv_timer_handler();
-  #endif
 
   #ifdef SCREEN_BUFFER
     #if !defined(HAS_ILI9341) && !defined(MARAUDER_SENSECAP)
