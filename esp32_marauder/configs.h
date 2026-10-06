@@ -2971,14 +2971,18 @@
       // GPS is not wired to the ESP32 on this board. These are the
       // ESP32-side pins of the inter-chip UART to the RP2040 companion MCU
       // (which owns the real GPS module and relays it — see
-      // Rp2040Bridge.h), following this file's existing GPS_TX/GPS_RX
-      // convention of naming each pin after the device on the OTHER end's
-      // matching pin:
-      //   RP2040 GPIO16 = its UART0 TX -> here (acts as this ESP32's RX)
-      //   RP2040 GPIO17 = its UART0 RX <- here (acts as this ESP32's TX)
+      // Rp2040Bridge.h). Per the official SenseCAP Indicator system
+      // diagram (ESP_GPIO20-RP_GPIO16, ESP_GPIO19-RP_GPIO17), and RP2040
+      // GPIO16/17 being its UART0 TX/RX respectively:
+      //   ESP32 GPIO20 <- RP2040 GPIO16 (its TX): this ESP32's RX pin
+      //   ESP32 GPIO19 -> RP2040 GPIO17 (its RX): this ESP32's TX pin
+      // (The RP2040 bridge firmware's own comment has these swapped from
+      // the schematic — don't trust it over the diagram.) Following this
+      // file's existing GPS_TX/GPS_RX convention (named after the pin on
+      // the OTHER end), GPS_TX = this ESP32's RX pin, GPS_RX = its TX pin.
       #define GPS_SERIAL_INDEX 2
-      #define GPS_TX 19
-      #define GPS_RX 20
+      #define GPS_TX 20
+      #define GPS_RX 19
     #endif
   #else
     #define mac_history_len 100
