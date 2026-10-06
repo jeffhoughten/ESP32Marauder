@@ -1211,8 +1211,22 @@ void MenuFunctions::updateStatusBar()
   #ifdef HAS_GPS
     if (this->old_gps_sat_count != gps_obj.getNumSats()) {
       this->old_gps_sat_count = gps_obj.getNumSats();
-      display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, STATUS_BAR_WIDTH, STATUSBAR_COLOR);
-      status_changed = true;
+      #ifdef MARAUDER_SENSECAP
+        // This board's RGB-interface panel is driven directly by the CPU
+        // with no frame-buffer controller chip (unlike the SPI panels most
+        // other boards use, whose controllers have their own internal
+        // GRAM and can't tear this way), so a full status-bar-width clear
+        // here is visible as a tear/flash every time GPS reports a
+        // satellite-count change -- about once a second with a live fix.
+        // Clear only the GPS icon/count region instead: it already ends
+        // well before the channel indicator at x=50, so this doesn't
+        // touch the channel/RAM pixels, which no longer need forcing via
+        // status_changed below either.
+        display_obj.tft.fillRect(0, 0, 50, STATUS_BAR_WIDTH, STATUSBAR_COLOR);
+      #else
+        display_obj.tft.fillRect(0, 0, SCREEN_WIDTH, STATUS_BAR_WIDTH, STATUSBAR_COLOR);
+        status_changed = true;
+      #endif
     }
   #endif
 
