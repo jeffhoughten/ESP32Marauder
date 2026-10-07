@@ -825,13 +825,13 @@ void GpsInterface::main() {
   }
 #endif
 
-  uint8_t num_sat = nmea.getNumSatellites();
-
-  if ((nmea.isValid()) && (num_sat > 0))
-    this->setGPSInfo();
-
-  else if ((!nmea.isValid()) && (num_sat <= 0)) {
-    this->setGPSInfo();
-  }
+  // setGPSInfo() just mirrors the parser's current state into this
+  // class's fields; it was previously gated to only run when fix-validity
+  // and satellite count were in one of two "consistent" combinations
+  // (valid+sats>0, or invalid+sats<=0), which skips the common transitional
+  // state while acquiring a fix (sats>0 but not yet valid) -- satellite
+  // count would then stay frozen at its initial value until a full fix
+  // was reached. Always syncing is correct and has no downside.
+  this->setGPSInfo();
 }
 #endif
