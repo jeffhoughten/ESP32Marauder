@@ -39,6 +39,8 @@
 
 #include "Rp2040Bridge.h"
 #include <FS.h>
+#include <FSImpl.h>  // FS.h only forward-declares fs::FileImpl/fs::FSImpl; the
+                      // full virtual interfaces this subclasses live here.
 #include <LinkedList.h>
 
 // ============================================================
