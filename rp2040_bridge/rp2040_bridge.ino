@@ -75,12 +75,15 @@
 
 // --- SD Card Commands ---
 #define PKT_SD_STATUS       0x60  // Bidirectional: SD card status
-#define PKT_SD_OPEN         0x61  // ESP32 -> RP2040: open file
+#define PKT_SD_OPEN         0x61  // ESP32 -> RP2040: open file (success response is
+                                   // [PKT_SD_RESPONSE, SD_OK, is_directory] -- 3 bytes,
+                                   // not the plain 2-byte sendSdOk() other commands use)
 #define PKT_SD_CLOSE        0x62  // ESP32 -> RP2040: close file
 #define PKT_SD_WRITE         0x63  // ESP32 -> RP2040: write data to file
 #define PKT_SD_READ         0x64  // ESP32 -> RP2040: read data from file
 #define PKT_SD_REMOVE       0x65  // ESP32 -> RP2040: delete file
 #define PKT_SD_MKDIR         0x66  // ESP32 -> RP2040: create directory
+#define PKT_SD_RMDIR         0x6C  // ESP32 -> RP2040: remove empty directory
 #define PKT_SD_EXISTS       0x67  // ESP32 -> RP2040: check if file exists
 #define PKT_SD_SIZE          0x68  // ESP32 -> RP2040: get file size
 #define PKT_SD_LISTDIR       0x69  // ESP32 -> RP2040: list directory
@@ -111,7 +114,7 @@
 // ============================================================
 // Constants
 // ============================================================
-#define FIRMWARE_VERSION    "SCI-Bridge v0.2.0"
+#define FIRMWARE_VERSION    "SCI-Bridge v0.2.2"
 #define MAX_PACKET_SIZE     512
 #define NMEA_BUFFER_SIZE    256
 #define GPS_FORWARD_INTERVAL_MS  0   // 0 = forward every sentence immediately
@@ -353,6 +356,12 @@ void onPacketReceived(const uint8_t* buffer, size_t size) {
       }
       break;
 
+    case PKT_SD_RMDIR:
+      if (size >= 2) {
+        handleSdRmdir(buffer + 1, size - 1);
+      }
+      break;
+
     case PKT_SD_EXISTS:
       if (size >= 2) {
         handleSdExists(buffer + 1, size - 1);
@@ -475,7 +484,13 @@ void handleSdOpen(const uint8_t* payload, size_t len) {
 
   if (openFile) {
     fileIsOpen = true;
-    sendSdOk();
+    // Custom 3-byte success response (not the shared sendSdOk()): callers
+    // need to know immediately whether what they opened is a directory,
+    // without a second round-trip, since SD.open() succeeds for both.
+    txBuf[0] = PKT_SD_RESPONSE;
+    txBuf[1] = SD_OK;
+    txBuf[2] = openFile.isDirectory() ? 1 : 0;
+    espSerial.send(txBuf, 3);
     Serial.println("  -> opened OK");
   } else {
     sendSdError(SD_ERR_OPEN_FAIL);
@@ -566,6 +581,23 @@ void handleSdMkdir(const uint8_t* payload, size_t len) {
   if (SD.mkdir(dirname)) {
     sendSdOk();
     Serial.print("SD MKDIR: ");
+    Serial.println(dirname);
+  } else {
+    sendSdError(SD_ERR_GENERIC);
+  }
+}
+
+void handleSdRmdir(const uint8_t* payload, size_t len) {
+  if (!sdMounted) { sendSdError(SD_ERR_NOT_MOUNTED); return; }
+
+  char dirname[128];
+  if (len >= sizeof(dirname)) len = sizeof(dirname) - 1;
+  memcpy(dirname, payload, len);
+  dirname[len] = '\0';
+
+  if (SD.rmdir(dirname)) {
+    sendSdOk();
+    Serial.print("SD RMDIR: ");
     Serial.println(dirname);
   } else {
     sendSdError(SD_ERR_GENERIC);
