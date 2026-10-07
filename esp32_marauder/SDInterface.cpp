@@ -125,6 +125,32 @@ namespace {
 
 bool SDInterface::initSD() {
   #ifdef HAS_SD
+    #ifdef MARAUDER_SENSECAP
+      // SD is not wired to the ESP32 on this board -- it's behind the
+      // RP2040 bridge (see Rp2040SdFs.h). "Mounting" means asking the
+      // RP2040 whether its own SD.begin() succeeded, not calling
+      // SD.begin() ourselves. Card type/size aren't exposed by the
+      // bridge protocol, so those are left at placeholder values.
+      if (!Rp2040SdTransport::request(RP2040_PKT_SD_STATUS, nullptr, 0) ||
+          Rp2040SdTransport::resp_cmd != RP2040_PKT_SD_STATUS ||
+          Rp2040SdTransport::resp_len < 1 || Rp2040SdTransport::resp_buf[0] == 0) {
+        Serial.println(F("Failed to mount SD Card"));
+        this->supported = false;
+        return false;
+      }
+
+      this->supported = true;
+      this->cardType = 0;     // not reported by the bridge protocol
+      this->cardSizeMB = 0;   // not reported by the bridge protocol
+      this->card_sz = "?";
+
+      if (!SD.exists("/SCRIPTS")) {
+        SD.mkdir("/SCRIPTS");
+      }
+
+      this->sd_files = new LinkedList<String>();
+      return true;
+    #else
     String display_string = "";
 
     #ifdef KIT
@@ -199,9 +225,10 @@ bool SDInterface::initSD() {
       }
 
       this->sd_files = new LinkedList<String>();
-    
+
       return true;
   }
+    #endif // MARAUDER_SENSECAP
 
   #else
     return false;

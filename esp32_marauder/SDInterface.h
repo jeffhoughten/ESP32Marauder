@@ -9,7 +9,11 @@
 #ifdef HAS_C5_SD
   #include "FS.h"
 #endif
-#include "SD.h"
+#ifdef MARAUDER_SENSECAP
+  #include "Rp2040SdFs.h"
+#else
+  #include "SD.h"
+#endif
 #include "SPIFFS.h"
 #ifdef HAS_C5_SD
   #include "SPI.h"

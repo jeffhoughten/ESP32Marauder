@@ -44,6 +44,7 @@
 #define RP2040_PKT_SD_LISTDIR   0x69
 #define RP2040_PKT_SD_RESPONSE  0x6A
 #define RP2040_PKT_SD_RENAME    0x6B
+#define RP2040_PKT_SD_RMDIR     0x6C
 #define RP2040_PKT_SD_ERROR     0x6F
 
 #define RP2040_UART_BAUD   921600
@@ -114,6 +115,17 @@ class Rp2040Bridge {
     // detected on its Grove UART.
     void onGpsStatus(void (*cb)(bool present)) {
       this->gps_status_cb = cb;
+    }
+
+    // Invoked for every packet type not already claimed by onGpsNmea/
+    // onGpsStatus above -- currently just the SD_* and PONG/ACK/VERSION
+    // types. `payload`/`len` exclude the leading command byte (`cmd`).
+    // Used by the SD filesystem backend (Rp2040SdFs.h) to capture
+    // request/response traffic; pass nullptr to clear it. Only one
+    // registration at a time -- fine, since SD requests are answered
+    // synchronously one at a time by design (see Rp2040SdFs.h).
+    void onOther(void (*cb)(uint8_t cmd, const uint8_t* payload, size_t len)) {
+      this->other_cb = cb;
     }
 
   private:
@@ -190,7 +202,11 @@ class Rp2040Bridge {
           break;
 
         default:
-          // PONG / ACK / VERSION / SD_* — nothing consumes these yet.
+          // PONG / ACK / VERSION / SD_* — handed to onOther() if anyone's
+          // listening (the SD backend), ignored otherwise.
+          if (this->other_cb) {
+            this->other_cb(data[0], data + 1, len - 1);
+          }
           break;
       }
     }
@@ -200,6 +216,7 @@ class Rp2040Bridge {
 
     void (*gps_nmea_cb)(const char*, size_t) = nullptr;
     void (*gps_status_cb)(bool) = nullptr;
+    void (*other_cb)(uint8_t, const uint8_t*, size_t) = nullptr;
 };
 
 // C++17 inline variable: every .cpp that #includes this header shares the

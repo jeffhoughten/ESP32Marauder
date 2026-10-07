@@ -646,11 +646,12 @@
     #define HAS_FULL_SCREEN
     // SD is not wired to the ESP32 on this board — it's behind the RP2040
     // companion MCU, accessed over a COBS-framed request/response protocol
-    // (Rp2040Bridge.h) rather than a mountable local SPI bus. HAS_SD stays
-    // off until there's a File-object-compatible driver that speaks that
-    // protocol; see Rp2040Bridge.h and the RP2040 firmware's PKT_SD_* ops.
-    //#define HAS_SD
-    //#define USE_SD
+    // rather than a mountable local SPI bus. Backed by a real fs::FSImpl/
+    // fs::FileImpl implementation (Rp2040SdFs.h) swapped in for the real
+    // <SD.h> in SDInterface.h, so this works as a genuine drop-in for
+    // every fs::FS&/File usage elsewhere in this codebase.
+    #define HAS_SD
+    #define USE_SD
     #define HAS_PSRAM
     #define HAS_NIMBLE_2
     #define HAS_IDF_3
@@ -2704,8 +2705,11 @@
     #endif
 
     #ifdef MARAUDER_SENSECAP
-      // SD is managed by RP2040 on SenseCAP
-      // We define dummy pins for now
+      // SD is on the RP2040's own SPI1 bus (see rp2040_bridge.ino), not
+      // reachable from any ESP32 GPIO at all -- access goes entirely
+      // through Rp2040SdFs.h's bridge protocol instead. These four are
+      // deliberately left defined but unreferenced by that implementation;
+      // nothing on the ESP32 side touches real SPI pins for SD.
       #define SD_CS 10
       #define SD_MISO 47
       #define SD_MOSI 48
