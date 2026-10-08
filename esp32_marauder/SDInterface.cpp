@@ -131,9 +131,24 @@ bool SDInterface::initSD() {
       // RP2040 whether its own SD.begin() succeeded, not calling
       // SD.begin() ourselves. Card type/size aren't exposed by the
       // bridge protocol, so those are left at placeholder values.
-      if (!Rp2040SdTransport::request(RP2040_PKT_SD_STATUS, nullptr, 0) ||
-          Rp2040SdTransport::resp_cmd != RP2040_PKT_SD_STATUS ||
-          Rp2040SdTransport::resp_len < 1 || Rp2040SdTransport::resp_buf[0] == 0) {
+      //
+      // The RP2040's own setup() waits up to 3s for a USB serial monitor
+      // (never present in normal use) before it even opens the inter-chip
+      // UART or calls its own SD.begin() -- it isn't ready to answer this
+      // at all until ~3.3-4s after power-on, which this call can easily
+      // lose the race against since it runs early in the ESP32's own
+      // boot. Retry rather than giving up after one attempt; each
+      // attempt's own timeout provides the pacing between tries.
+      bool sd_mounted = false;
+      for (uint8_t attempt = 0; attempt < 6 && !sd_mounted; attempt++) {
+        if (Rp2040SdTransport::request(RP2040_PKT_SD_STATUS, nullptr, 0, 800) &&
+            Rp2040SdTransport::resp_cmd == RP2040_PKT_SD_STATUS &&
+            Rp2040SdTransport::resp_len >= 1 && Rp2040SdTransport::resp_buf[0] != 0) {
+          sd_mounted = true;
+        }
+      }
+
+      if (!sd_mounted) {
         Serial.println(F("Failed to mount SD Card"));
         this->supported = false;
         return false;
