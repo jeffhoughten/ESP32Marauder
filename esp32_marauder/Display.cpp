@@ -314,7 +314,11 @@ void Display::RunSetup() {
       1, 10, 8, 50,
       1, 10, 8, 20,
       0, GFX_NOT_DEFINED, false,
-      0, 0, HOR_RES * 10);
+      0, 0, 0); // TEMP DIAGNOSTIC: bounce buffer disabled (was HOR_RES * 10)
+                // to test whether it's implicated in the sticky
+                // wraparound/artifact corruption reported after this was
+                // enabled. Restore HOR_RES * 10 once that's confirmed
+                // either way.
 
     gfx = new Arduino_RGB_Display(
       HOR_RES, VER_RES, rgbpanel, 0, true,
