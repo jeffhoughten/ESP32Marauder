@@ -132,6 +132,14 @@ bool SDInterface::initSD() {
       // SD.begin() ourselves. Card type/size aren't exposed by the
       // bridge protocol, so those are left at placeholder values.
       //
+      // initSD() runs before gps_obj.begin() in esp32_marauder.ino's
+      // setup() -- the only other place that calls rp2040_bridge.begin()
+      // -- so the inter-chip UART would otherwise still be unconfigured
+      // here. begin() is idempotent (just (re)configures Serial2 at the
+      // right baud/pins), so calling it again from gps_obj.begin() later
+      // is harmless; this just makes initSD() not depend on boot order.
+      rp2040_bridge.begin();
+
       // The RP2040's own setup() waits up to 3s for a USB serial monitor
       // (never present in normal use) before it even opens the inter-chip
       // UART or calls its own SD.begin() -- it isn't ready to answer this
