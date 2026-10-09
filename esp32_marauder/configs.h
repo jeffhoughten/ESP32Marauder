@@ -655,7 +655,12 @@
     #define HAS_PSRAM
     #define HAS_NIMBLE_2
     #define HAS_IDF_3
-    #define HAS_DUAL_BAND
+    // NOT HAS_DUAL_BAND: that belongs to ESP32-C5-based boards, which have
+    // a real 5GHz radio. The ESP32-S3 (this board's chip) is 2.4GHz-only
+    // hardware -- every ESP32 variant is -- so defining it here (as the
+    // original port did) just made channelHop() cycle through 5GHz channel
+    // numbers (32-177) the radio silently rejects, wasting real scan time
+    // parked on channels it can never use.
     #define HAS_GPS
   #endif
   //// END BOARD FEATURES
